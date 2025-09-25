@@ -1,0 +1,47 @@
+[project]
+name = "hs-agent"
+version = "0.1.0"
+description = "HS number classification agent using hierarchical approach with Pydantic AI"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.12.15",
+    "fastapi>=0.116.2",
+    "httpx>=0.25.0",
+    "langchain>=0.3.27",
+    "langchain-core>=0.3.76",
+    "langchain-google-vertexai>=2.1.2",
+    "langfuse>=3.4.0",
+    "langgraph>=0.6.7",
+    "loguru>=0.7.3",
+    "mkdocs>=1.6.1",
+    "mkdocs-autorefs>=1.4.3",
+    "mkdocs-material>=9.6.20",
+    "mkdocstrings[python]>=0.30.1",
+    "mkdocstrings-python>=1.18.2",
+    "openpyxl>=3.1.5",
+    "pandas>=2.3.2",
+    "pydantic>=2.0.0",
+    "pydantic-ai-slim[google]>=1.0.8",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.1.1",
+    "python-multipart>=0.0.20",
+    "requests>=2.32.5",
+    "rich>=14.1.0",
+    "tqdm>=4.67.1",
+    "typer>=0.17.4",
+    "uvicorn>=0.35.0",
+]
+
+[project.scripts]
+# New unified CLI interface
+hs-agent = "hs_agent.cli:main"
+
+# Legacy commands removed - use 'hs-agent serve' and 'hs-agent classify' instead
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hs_agent"]

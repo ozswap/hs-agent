@@ -1,0 +1,93 @@
+"""LangGraph-specific models and state definitions for HS code classification."""
+
+from typing import List, Dict, Any, Optional, Annotated
+from typing_extensions import TypedDict
+from pydantic import BaseModel, Field
+import operator
+
+# Import shared models from core
+from hs_agent.core.models.classification import (
+    ClassificationLevel,
+    HSCandidate,
+    ClassificationResult,
+    FinalClassification,
+    RankingRequest,
+    RankingResponse
+)
+
+
+# LangGraph-specific simplified result model for internal use
+class SimpleClassificationResult(BaseModel):
+    """Simplified result for LangGraph internal state management."""
+    selected_code: str = Field(description="The selected HS code")
+    confidence: float = Field(description="Confidence score from 0 to 1")
+    reasoning: str = Field(description="Reasoning for the selection")
+
+
+# Structured output models for LLM responses
+class RankedCandidate(BaseModel):
+    """A ranked HS code candidate."""
+    code: str = Field(description="The HS code")
+    description: str = Field(description="Description of the HS code")
+    relevance_score: float = Field(description="Relevance score from 0.0 to 1.0")
+    justification: str = Field(description="Detailed justification for the score")
+
+
+class RankingOutput(BaseModel):
+    """Output from HS code ranking."""
+    ranked_candidates: List[RankedCandidate] = Field(description="Candidates ranked by relevance")
+    reasoning: str = Field(description="Overall reasoning for the ranking")
+
+
+class SelectionOutput(BaseModel):
+    """Output from final HS code selection."""
+    selected_code: str = Field(description="The selected HS code")
+    confidence: float = Field(description="Confidence score from 0.0 to 1.0")
+    reasoning: str = Field(description="Reasoning for the selection")
+
+
+# LangGraph State Definitions
+class HSClassificationState(TypedDict):
+    """Main state for HS classification workflow."""
+
+    # Input
+    product_description: str
+    top_k: int
+
+    # Progress tracking
+    current_level: Optional[ClassificationLevel]
+
+    # Chapter level (2-digit)
+    chapter_candidates: Optional[List[Dict[str, Any]]]
+    chapter_result: Optional[SimpleClassificationResult]
+
+    # Heading level (4-digit)
+    heading_candidates: Optional[List[Dict[str, Any]]]
+    heading_result: Optional[SimpleClassificationResult]
+
+    # Subheading level (6-digit)
+    subheading_candidates: Optional[List[Dict[str, Any]]]
+    subheading_result: Optional[SimpleClassificationResult]
+
+    # Final results
+    final_code: Optional[str]
+    overall_confidence: Optional[float]
+    processing_time: Optional[float]
+
+    # Error handling
+    error: Optional[str]
+
+    # Metadata for tracing
+    trace_context: Optional[Dict[str, Any]]
+
+
+class LevelState(TypedDict):
+    """State for individual level classification."""
+    product_description: str
+    level: ClassificationLevel
+    parent_code: Optional[str]
+    top_k: int
+    candidates: List[Dict[str, Any]]
+    ranked_candidates: Optional[List[HSCandidate]]
+    result: Optional[SimpleClassificationResult]
+    error: Optional[str]
