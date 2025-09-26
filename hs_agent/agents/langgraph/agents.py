@@ -2,6 +2,9 @@
 
 # Standard library imports
 from typing import List, Dict, Any, Optional
+import asyncio
+import concurrent.futures
+from functools import partial
 
 # Third-party imports
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -13,12 +16,15 @@ from langgraph.graph import StateGraph, START, END
 # Local imports
 from hs_agent.agents.langgraph.models import (
     HSClassificationState,
+    HSMultiChoiceState,
     ClassificationLevel,
     HSCandidate,
     ClassificationResult,
+    ClassificationPath,
     RankedCandidate,
     RankingOutput,
-    SelectionOutput
+    SelectionOutput,
+    MultiSelectionOutput
 )
 from hs_agent.config import settings
 from hs_agent.core.data_loader import HSDataLoader
@@ -86,9 +92,13 @@ class HSLangGraphAgent:
         # Initialize structured output models
         self.ranking_model = self.model.with_structured_output(RankingOutput)
         self.selection_model = self.model.with_structured_output(SelectionOutput)
+        self.multi_selection_model = self.model.with_structured_output(MultiSelectionOutput)
 
         # Build the main hierarchical classification graph
         self.classification_graph = self._build_classification_graph()
+
+        # Build the multi-choice looping classification graph
+        self.multi_choice_graph = self._build_multi_choice_graph()
 
     def _build_classification_graph(self):
         """Build the main hierarchical HS classification StateGraph with one node per LLM call."""
@@ -556,6 +566,544 @@ Return the candidates ranked by relevance score (highest first) with detailed ju
         }
 
         # Flush Langfuse events to ensure they are sent (important for short-lived applications)
+        if settings.langfuse_enabled:
+            try:
+                langfuse_client = get_client()
+                langfuse_client.flush()
+                logger.debug("✅ Langfuse events flushed")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to flush Langfuse events: {e}")
+
+        return results
+
+    # =============================================================================
+    # MULTI-CHOICE LOOPING GRAPH IMPLEMENTATION
+    # =============================================================================
+
+    def _build_multi_choice_graph(self):
+        """Build the simplified multi-choice classification StateGraph with list-based looping."""
+        try:
+            # Create the simplified multi-choice workflow graph
+            workflow = StateGraph(HSMultiChoiceState)
+
+            # Add nodes for simplified multi-choice classification
+            workflow.add_node("rank_chapter_candidates", self._rank_chapters_multi)
+            workflow.add_node("select_multiple_chapters", self._select_multiple_chapters_simple)
+
+            # Chapter processing - loop through all selected chapters
+            workflow.add_node("process_all_chapters", self._process_all_chapters)
+
+            # Heading processing - loop through all collected headings
+            workflow.add_node("process_all_headings", self._process_all_headings)
+
+            # Final aggregation
+            workflow.add_node("aggregate_all_results", self._aggregate_all_results)
+
+            # Simple sequential flow - no complex routing!
+            workflow.add_edge(START, "rank_chapter_candidates")
+            workflow.add_edge("rank_chapter_candidates", "select_multiple_chapters")
+            workflow.add_edge("select_multiple_chapters", "process_all_chapters")
+            workflow.add_edge("process_all_chapters", "process_all_headings")
+            workflow.add_edge("process_all_headings", "aggregate_all_results")
+            workflow.add_edge("aggregate_all_results", END)
+
+            # Compile the graph
+            compiled_graph = workflow.compile()
+            logger.info("✅ Simplified multi-choice classification graph compiled successfully")
+            return compiled_graph
+
+        except Exception as e:
+            logger.error(f"Failed to build simplified multi-choice classification graph: {e}")
+            raise
+
+    # =============================================================================
+    # SIMPLIFIED MULTI-CHOICE GRAPH NODES
+    # =============================================================================
+
+    async def _rank_chapters_multi(self, state: HSMultiChoiceState) -> HSMultiChoiceState:
+        """STEP 1: Broad initial ranking of chapter candidates with high K."""
+        initial_k = state["initial_ranking_k"]
+        logger.info(f"🔍 STEP 1: Broad initial ranking of chapter candidates with K={initial_k}")
+
+        codes_dict = self.data_loader.codes_2digit
+        candidates = await self._llm_initial_ranking(
+            state["product_description"],
+            codes_dict,
+            ClassificationLevel.CHAPTER,
+            None,
+            initial_k  # Use high K for broad initial ranking
+        )
+
+        candidate_dicts = [
+            {
+                "code": code,
+                "description": hs_code.description,
+                "relevance_score": score
+            }
+            for code, hs_code, score in candidates
+        ]
+
+        logger.info(f"✅ Broad ranking complete: {len(candidate_dicts)} chapter candidates (top {initial_k})")
+        return {
+            **state,
+            "chapter_candidates": candidate_dicts
+        }
+
+    async def _select_multiple_chapters_simple(self, state: HSMultiChoiceState) -> HSMultiChoiceState:
+        """STEP 2: Refined selection from broadly ranked candidates (1 to max_n range)."""
+        candidates = state.get("chapter_candidates", [])
+        max_n = state["max_selections_per_level"]
+        logger.info(f"🎯 STEP 2: Refined selection from {len(candidates)} candidates (range: 1 to {max_n})")
+
+        result = await self._llm_multi_selection(
+            state["product_description"],
+            candidates,
+            ClassificationLevel.CHAPTER,
+            max_n,  # This is the maximum, LLM can choose 1 to max_n
+            state["min_confidence_threshold"]
+        )
+
+        # Filter selected chapters that meet confidence threshold
+        high_confidence_chapters = [
+            code for code, conf in zip(result.selected_codes, result.individual_confidences)
+            if conf >= state["min_confidence_threshold"]
+        ]
+
+        # Ensure we have at least 1 selection if any candidates meet threshold
+        if not high_confidence_chapters and result.selected_codes:
+            # Take the highest confidence selection even if below threshold
+            best_idx = result.individual_confidences.index(max(result.individual_confidences))
+            high_confidence_chapters = [result.selected_codes[best_idx]]
+            logger.warning(f"No chapters met threshold, using best: {high_confidence_chapters[0]}")
+
+        logger.info(f"✅ Refined selection: {len(high_confidence_chapters)} chapters: {high_confidence_chapters}")
+
+        return {
+            **state,
+            "selected_chapters": high_confidence_chapters,
+            "chapters_to_process": high_confidence_chapters.copy()  # Initialize processing list
+        }
+
+    async def _process_single_chapter(self, chapter_code: str, product_description: str, initial_ranking_k: int, max_selections: int, min_confidence: float) -> tuple:
+        """Process a single chapter to get its headings using two-step approach."""
+        logger.info(f"  🧵 Processing chapter: {chapter_code} (two-step ranking)")
+
+        # Get all headings under this chapter
+        codes_dict = {
+            code: hs_code for code, hs_code in self.data_loader.codes_4digit.items()
+            if code.startswith(chapter_code)
+        }
+
+        if not codes_dict:
+            logger.warning(f"    No headings found for chapter {chapter_code}")
+            return chapter_code, []
+
+        # STEP 1: Broad initial ranking with high K
+        candidates = await self._llm_initial_ranking(
+            product_description,
+            codes_dict,
+            ClassificationLevel.HEADING,
+            chapter_code,
+            initial_ranking_k  # Use high K for broad coverage
+        )
+
+        candidate_dicts = [
+            {
+                "code": code,
+                "description": hs_code.description,
+                "relevance_score": score
+            }
+            for code, hs_code, score in candidates
+        ]
+
+        # STEP 2: Refined selection (1 to max_n range)
+        result = await self._llm_multi_selection(
+            product_description,
+            candidate_dicts,
+            ClassificationLevel.HEADING,
+            max_selections,  # Max selections (LLM chooses 1 to max_n)
+            min_confidence,
+            chapter_code
+        )
+
+        # Collect selected headings
+        selected_headings = [
+            code for code, conf in zip(result.selected_codes, result.individual_confidences)
+            if conf >= min_confidence
+        ]
+
+        # Ensure at least 1 selection per chapter
+        if not selected_headings and result.selected_codes:
+            best_idx = result.individual_confidences.index(max(result.individual_confidences))
+            selected_headings = [result.selected_codes[best_idx]]
+            logger.warning(f"    Chapter {chapter_code}: using best heading despite low confidence")
+
+        logger.info(f"    ✅ Chapter {chapter_code}: {len(selected_headings)} headings from {len(candidate_dicts)} candidates: {selected_headings}")
+        return chapter_code, selected_headings
+
+    async def _process_all_chapters(self, state: HSMultiChoiceState) -> HSMultiChoiceState:
+        """Process all selected chapters to collect headings using concurrent processing."""
+        chapters_to_process = state.get("chapters_to_process", [])
+        logger.info(f"🔄 Processing {len(chapters_to_process)} chapters CONCURRENTLY to collect headings")
+
+        all_headings_to_process = []
+        heading_parent_mapping = {}  # Track which chapter each heading belongs to
+
+        # Process all chapters concurrently
+        tasks = []
+        for chapter_code in chapters_to_process:
+            task = self._process_single_chapter(
+                chapter_code,
+                state["product_description"],
+                state["initial_ranking_k"],  # Use high K for broad ranking
+                state["max_selections_per_level"],
+                state["min_confidence_threshold"]
+            )
+            tasks.append(task)
+
+        # Wait for all chapters to be processed
+        logger.info(f"⚡ Starting concurrent processing of {len(tasks)} chapters...")
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect results
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Chapter processing failed: {result}")
+                continue
+
+            chapter_code, selected_headings = result
+
+            # Add to processing list and track parent chapter
+            for heading_code in selected_headings:
+                all_headings_to_process.append(heading_code)
+                heading_parent_mapping[heading_code] = chapter_code
+
+        logger.info(f"✅ Collected {len(all_headings_to_process)} headings total: {all_headings_to_process}")
+
+        return {
+            **state,
+            "headings_to_process": all_headings_to_process,
+            "heading_parent_mapping": heading_parent_mapping  # Track chapter relationships
+        }
+
+    async def _process_single_heading(self, heading_code: str, chapter_code: str, product_description: str, initial_ranking_k: int, max_selections: int, min_confidence: float) -> List[ClassificationPath]:
+        """Process a single heading to get its classification paths using two-step approach."""
+        logger.info(f"  🧵 Processing heading: {heading_code} (from chapter {chapter_code}, two-step ranking)")
+
+        # Get all subheadings under this heading
+        codes_dict = {
+            code: hs_code for code, hs_code in self.data_loader.codes_6digit.items()
+            if code.startswith(heading_code)
+        }
+
+        if not codes_dict:
+            # Create a fallback candidate using the parent heading code
+            candidate_dicts = [{
+                "code": heading_code + ".00",
+                "description": f"General subheading under {heading_code}",
+                "relevance_score": 0.5
+            }]
+            logger.info(f"    Using fallback subheading for {heading_code}")
+        else:
+            # STEP 1: Broad initial ranking with high K
+            candidates = await self._llm_initial_ranking(
+                product_description,
+                codes_dict,
+                ClassificationLevel.SUBHEADING,
+                heading_code,
+                initial_ranking_k  # Use high K for broad coverage
+            )
+
+            candidate_dicts = [
+                {
+                    "code": code,
+                    "description": hs_code.description,
+                    "relevance_score": score
+                }
+                for code, hs_code, score in candidates
+            ]
+
+        # STEP 2: Refined selection (1 to max_n range)
+        result = await self._llm_multi_selection(
+            product_description,
+            candidate_dicts,
+            ClassificationLevel.SUBHEADING,
+            max_selections,  # Max selections (LLM chooses 1 to max_n)
+            min_confidence,
+            heading_code
+        )
+
+        # Create classification paths for each selected subheading
+        paths = []
+        for subheading_code, confidence in zip(result.selected_codes, result.individual_confidences):
+            if confidence >= min_confidence:
+                path = ClassificationPath(
+                    chapter_code=chapter_code,
+                    heading_code=heading_code,
+                    subheading_code=subheading_code,
+                    path_confidence=confidence,
+                    chapter_reasoning=f"Two-step selection for chapter {chapter_code}",
+                    heading_reasoning=f"Two-step selection for heading {heading_code}",
+                    subheading_reasoning=result.reasoning
+                )
+                paths.append(path)
+
+        # Ensure at least 1 path per heading
+        if not paths and result.selected_codes:
+            best_idx = result.individual_confidences.index(max(result.individual_confidences))
+            best_subheading = result.selected_codes[best_idx]
+            best_confidence = result.individual_confidences[best_idx]
+
+            path = ClassificationPath(
+                chapter_code=chapter_code,
+                heading_code=heading_code,
+                subheading_code=best_subheading,
+                path_confidence=best_confidence,
+                chapter_reasoning=f"Two-step selection for chapter {chapter_code}",
+                heading_reasoning=f"Two-step selection for heading {heading_code}",
+                subheading_reasoning=f"Best option despite low confidence: {result.reasoning}"
+            )
+            paths.append(path)
+            logger.warning(f"    Heading {heading_code}: using best path despite low confidence")
+
+        logger.info(f"    ✅ Heading {heading_code}: {len(paths)} paths from {len(candidate_dicts)} candidates")
+        return paths
+
+    async def _process_all_headings(self, state: HSMultiChoiceState) -> HSMultiChoiceState:
+        """Process all selected headings to create final classification paths using concurrent processing."""
+        headings_to_process = state.get("headings_to_process", [])
+        heading_parent_mapping = state.get("heading_parent_mapping", {})
+        logger.info(f"🔄 Processing {len(headings_to_process)} headings CONCURRENTLY to create classification paths")
+
+        # Process all headings concurrently
+        tasks = []
+        for heading_code in headings_to_process:
+            chapter_code = heading_parent_mapping.get(heading_code)
+            task = self._process_single_heading(
+                heading_code,
+                chapter_code,
+                state["product_description"],
+                state["initial_ranking_k"],  # Use high K for broad ranking
+                state["max_selections_per_level"],
+                state["min_confidence_threshold"]
+            )
+            tasks.append(task)
+
+        # Wait for all headings to be processed
+        logger.info(f"⚡ Starting concurrent processing of {len(tasks)} headings...")
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Collect all classification paths
+        all_classification_paths = []
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Heading processing failed: {result}")
+                continue
+
+            # result is a list of ClassificationPath objects
+            all_classification_paths.extend(result)
+
+        logger.info(f"✅ Created {len(all_classification_paths)} total classification paths")
+
+        return {
+            **state,
+            "all_classification_paths": all_classification_paths
+        }
+
+
+    async def _aggregate_all_results(self, state: HSMultiChoiceState) -> HSMultiChoiceState:
+        """Aggregate all classification paths and calculate final metrics."""
+        all_paths = state.get("all_classification_paths", [])
+
+        if not all_paths:
+            logger.warning("No classification paths found")
+            return {
+                **state,
+                "overall_confidence": 0.0,
+                "processing_stats": {"total_paths": 0}
+            }
+
+        # Calculate overall confidence as average of all path confidences
+        overall_confidence = sum(path.path_confidence for path in all_paths) / len(all_paths)
+
+        # Calculate processing statistics
+        processing_stats = {
+            "total_paths": len(all_paths),
+            "unique_chapters": len(set(path.chapter_code for path in all_paths)),
+            "unique_headings": len(set(path.heading_code for path in all_paths)),
+            "unique_subheadings": len(set(path.subheading_code for path in all_paths))
+        }
+
+        logger.info(f"🎯 Final aggregation: {processing_stats}")
+
+        return {
+            **state,
+            "overall_confidence": overall_confidence,
+            "processing_stats": processing_stats
+        }
+
+    # =============================================================================
+    # MULTI-CHOICE LLM HELPER METHODS
+    # =============================================================================
+
+    async def _llm_multi_selection(
+        self,
+        product_description: str,
+        candidate_dicts: List[Dict],
+        level: ClassificationLevel,
+        max_selections: int,
+        min_confidence: float,
+        parent_code: str = None
+    ) -> MultiSelectionOutput:
+        """Use LLM for multi-choice selection with detailed reasoning."""
+
+        level_names = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
+        parent_context = f"🔗 Under Parent Code: {parent_code}" if parent_code else "🏁 Root Level Classification"
+
+        system_prompt = """You are an expert HS (Harmonized System) code classification specialist.
+
+Your task is to select MULTIPLE relevant HS codes from a ranked list of candidates.
+
+You must:
+1. Analyze each candidate's relevance to the product
+2. Select between 1 and the maximum allowed codes (flexible range)
+3. Choose only codes that meet the minimum confidence threshold
+4. Provide individual confidence scores for each selected code
+5. Provide detailed justification for your selections
+
+SELECTION STRATEGY:
+- Start with the most relevant candidates (highest scores)
+- You can select 1, 2, 3, or up to the maximum - be flexible
+- Choose MORE codes for ambiguous products that could fit multiple categories
+- Choose FEWER codes for products with clear, specific matches
+- All selected codes should be above the confidence threshold
+- Consider trade classification principles and customs practices"""
+
+        candidates_text = "\n".join([
+            f"• Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
+            for c in candidate_dicts
+        ])
+
+        user_prompt = f"""[TWO-STEP MULTI-SELECTION - Level {level.value}] Refined selection from broadly ranked candidates
+
+🎯 CLASSIFICATION TASK: {level_names[level.value]} Level ({level.value}-digit codes)
+📦 Product: "{product_description}"
+{parent_context}
+
+🔄 TWO-STEP PROCESS:
+• STEP 1 (Complete): Broad initial ranking has identified top candidates
+• STEP 2 (Current): Refined selection from these candidates
+
+📊 SELECTION CONSTRAINTS:
+• Selection range: 1 to {max_selections} codes (be flexible!)
+• Minimum confidence: {min_confidence:.2f}
+• Quality over quantity - choose the most relevant codes
+
+🏆 BROADLY RANKED CANDIDATES (Step 1 Results):
+{candidates_text}
+
+✅ From these candidates, select the BEST ones and provide:
+1. Selected HS codes (1 to {max_selections} codes)
+2. Individual confidence scores for each (0.0-1.0)
+3. Overall confidence for the selection set
+4. Detailed reasoning for your refined selection
+
+GUIDANCE: Choose fewer codes for clear matches, more codes for ambiguous products that could fit multiple categories."""
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt)
+        ]
+
+        try:
+            result = await self.multi_selection_model.ainvoke(messages)
+            return result
+
+        except Exception as e:
+            # Fallback: select the top candidate if available
+            logger.warning(f"Multi-selection failed, using fallback: {e}")
+            if candidate_dicts:
+                first_candidate = candidate_dicts[0]
+                return MultiSelectionOutput(
+                    selected_codes=[first_candidate["code"]],
+                    individual_confidences=[0.5],
+                    overall_confidence=0.5,
+                    reasoning=f"Fallback selection due to error: {e}"
+                )
+            else:
+                return MultiSelectionOutput(
+                    selected_codes=["0000.00"],
+                    individual_confidences=[0.0],
+                    overall_confidence=0.0,
+                    reasoning=f"No candidates found. Error: {e}"
+                )
+
+    # =============================================================================
+    # MULTI-CHOICE PUBLIC API
+    # =============================================================================
+
+    async def classify_multi_choice(
+        self,
+        product_description: str,
+        initial_ranking_k: int = 20,  # High K for broad initial ranking
+        max_selections_per_level: int = 3,  # Max selections (1 to max_n range)
+        min_confidence_threshold: float = 0.6
+    ) -> Dict[str, Any]:
+        """Perform multi-choice hierarchical HS classification with looping."""
+
+        # Initial state for two-step ranking approach
+        initial_state = {
+            "product_description": product_description,
+            "initial_ranking_k": initial_ranking_k,  # High K for broad initial ranking
+            "max_selections_per_level": max_selections_per_level,
+            "min_confidence_threshold": min_confidence_threshold,
+            "chapter_candidates": None,
+            "selected_chapters": [],
+            "chapters_to_process": [],
+            "headings_to_process": [],  # Simplified: flat list of headings
+            "heading_parent_mapping": {},  # Track chapter relationships
+            "subheading_candidates": {},  # Keep for compatibility
+            "current_processing_chapter": None,  # Keep for compatibility
+            "current_processing_heading": None,  # Keep for compatibility
+            "all_classification_paths": [],
+            "processing_stats": {},
+            "overall_confidence": None,
+            "error": None,
+            "trace_context": None
+        }
+
+        # Prepare config for graph execution
+        config = {}
+        if self.langfuse_handler is not None:
+            config["callbacks"] = [self.langfuse_handler]
+            config["metadata"] = {
+                "langfuse_session_id": f"hs-multi-classification-{hash(product_description)}",
+                "langfuse_tags": ["hs-classification", "multi-choice", "hierarchical", "langgraph"],
+                "langfuse_user_id": "hs-agent-system"
+            }
+
+        # Run the multi-choice classification graph
+        try:
+            final_state = await self.multi_choice_graph.ainvoke(initial_state, config=config)
+        except Exception as e:
+            logger.error(f"Multi-choice graph execution failed: {e}")
+            raise AgentError(
+                message=f"Multi-choice classification graph execution failed: {str(e)}",
+                error_code="MULTI_CHOICE_GRAPH_EXECUTION_FAILED",
+                details={"product_description": product_description, "original_error": str(e)},
+                cause=e
+            )
+
+        # Format results
+        results = {
+            "all_classification_paths": final_state["all_classification_paths"],
+            "processing_stats": final_state["processing_stats"],
+            "overall_confidence": final_state["overall_confidence"],
+            "selected_chapters": final_state["selected_chapters"],
+            "total_paths": len(final_state["all_classification_paths"])
+        }
+
+        # Flush Langfuse events
         if settings.langfuse_enabled:
             try:
                 langfuse_client = get_client()

@@ -46,6 +46,26 @@ class SelectionOutput(BaseModel):
     reasoning: str = Field(description="Reasoning for the selection")
 
 
+# Multi-choice selection models
+class MultiSelectionOutput(BaseModel):
+    """Output from multi-choice HS code selection."""
+    selected_codes: List[str] = Field(description="List of selected HS codes", min_items=1)
+    individual_confidences: List[float] = Field(description="Confidence scores for each selected code")
+    overall_confidence: float = Field(description="Overall confidence for the selection set")
+    reasoning: str = Field(description="Reasoning for selecting these codes")
+
+
+class ClassificationPath(BaseModel):
+    """A complete classification path from chapter to subheading."""
+    chapter_code: str = Field(description="2-digit chapter code")
+    heading_code: str = Field(description="4-digit heading code")
+    subheading_code: str = Field(description="6-digit subheading code")
+    path_confidence: float = Field(description="Overall confidence for this complete path")
+    chapter_reasoning: str = Field(description="Reasoning for chapter selection")
+    heading_reasoning: str = Field(description="Reasoning for heading selection")
+    subheading_reasoning: str = Field(description="Reasoning for subheading selection")
+
+
 # LangGraph State Definitions
 class HSClassificationState(TypedDict):
     """Main state for HS classification workflow."""
@@ -78,6 +98,48 @@ class HSClassificationState(TypedDict):
     error: Optional[str]
 
     # Metadata for tracing
+    trace_context: Optional[Dict[str, Any]]
+
+
+# Multi-choice state for looping workflows
+class HSMultiChoiceState(TypedDict):
+    """State for multi-choice HS classification workflow with looping."""
+
+    # Input
+    product_description: str
+    initial_ranking_k: int  # High K for broad initial ranking (e.g., 20-50)
+    max_selections_per_level: int  # Max codes to select at each level (1 to max_n range)
+    min_confidence_threshold: float  # Minimum confidence to continue processing
+
+    # Initial candidates from ranking
+    chapter_candidates: Optional[List[Dict[str, Any]]]
+
+    # Selected codes for processing (simplified lists)
+    selected_chapters: List[str]  # Chapters selected for processing
+    chapters_to_process: List[str]  # Chapters still to be processed
+
+    # Simplified heading processing
+    headings_to_process: List[str]  # All headings to process (flattened from all chapters)
+    heading_parent_mapping: Dict[str, str]  # heading -> parent chapter mapping
+
+    # Subheading candidates (not needed in simplified approach)
+    subheading_candidates: Dict[str, List[Dict[str, Any]]]  # heading -> subheading candidates
+
+    # Current processing context (removed - not needed in simplified approach)
+    current_processing_chapter: Optional[str]  # Kept for compatibility
+    current_processing_heading: Optional[str]  # Kept for compatibility
+
+    # Accumulated results - all complete classification paths
+    all_classification_paths: List[ClassificationPath]
+
+    # Processing metadata
+    processing_stats: Dict[str, int]  # Track number of paths processed, etc.
+    overall_confidence: Optional[float]
+
+    # Error handling
+    error: Optional[str]
+
+    # Tracing
     trace_context: Optional[Dict[str, Any]]
 
 
