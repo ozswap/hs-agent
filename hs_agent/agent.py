@@ -50,41 +50,6 @@ class HSAgent:
     async def classify(self, product_description: str, top_k: int = 10) -> ClassificationResponse:
         """Classify a product to get its HS code."""
         import time
-
-        # Wrap execution in Langfuse trace if enabled (SDK v3 pattern)
-        if self.langfuse_handler:
-            from langfuse import get_client
-            langfuse = get_client()
-
-            with langfuse.start_as_current_span(name="HS_Classification") as span:
-                # Update trace with input
-                span.update_trace(
-                    input={"product_description": product_description, "top_k": top_k},
-                    metadata={"model": self.model_name}
-                )
-
-                # Perform classification
-                response = await self._perform_classification(product_description, top_k)
-
-                # Update trace with output
-                span.update_trace(
-                    output={
-                        "final_code": response.final_code,
-                        "confidence": response.overall_confidence,
-                        "chapter": response.chapter.selected_code,
-                        "heading": response.heading.selected_code,
-                        "subheading": response.subheading.selected_code
-                    }
-                )
-
-                return response
-        else:
-            # No Langfuse tracking
-            return await self._perform_classification(product_description, top_k)
-
-    async def _perform_classification(self, product_description: str, top_k: int) -> ClassificationResponse:
-        """Internal method to perform the actual classification."""
-        import time
         start = time.time()
 
         # Chapter (2-digit)
