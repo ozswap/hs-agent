@@ -15,6 +15,7 @@ from hs_agent.models import (
 from hs_agent.graph_models import ClassificationState
 from hs_agent.config.settings import settings
 from hs_agent.data_loader import HSDataLoader
+from hs_agent.config_loader import load_workflow_configs, get_prompt, get_model_params
 
 
 class HSAgent:
@@ -23,6 +24,10 @@ class HSAgent:
     def __init__(self, data_loader: HSDataLoader, model_name: Optional[str] = None):
         self.data_loader = data_loader
         self.model_name = model_name or settings.default_model_name
+
+        # Load workflow configs from files
+        print("Loading workflow configs...")
+        self.configs = load_workflow_configs()
 
         # Initialize Langfuse if enabled (SDK v3)
         self.langfuse_handler = None
@@ -184,19 +189,27 @@ class HSAgent:
     # ========== Helper Methods ==========
 
     async def _rank_codes(self, product_description: str, codes_dict: Dict, top_k: int) -> List[Dict]:
-        """Rank HS codes by relevance."""
-        codes_list = "\n".join([
+        """Rank HS codes by relevance using config prompts."""
+        # Prepare candidates list
+        candidates_list = "\n".join([
             f"{i+1}. {code}: {hs.description}"
             for i, (code, hs) in enumerate(codes_dict.items())
         ])
 
-        system_prompt = """You are an HS code classification expert.
+        # Use prompts from config if available
+        config = self.configs.get("rank_chapter_candidates", {})
+
+        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
 Rank candidates by relevance (0.0-1.0 score)."""
 
-        user_prompt = f"""Product: "{product_description}"
+        user_prompt = get_prompt(
+            config, "user",
+            product_description=product_description,
+            candidates_list=candidates_list
+        ) or f"""Product: "{product_description}"
 
 Codes:
-{codes_list}
+{candidates_list}
 
 Rank top {top_k} most relevant codes."""
 
@@ -220,7 +233,7 @@ Rank top {top_k} most relevant codes."""
             ]
 
     async def _select_code(self, product_description: str, candidates: List[Dict], level: ClassificationLevel) -> ClassificationResult:
-        """Select best code from candidates."""
+        """Select best code from candidates using config prompts."""
         level_names = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
 
         candidates_text = "\n".join([
@@ -228,10 +241,18 @@ Rank top {top_k} most relevant codes."""
             for c in candidates
         ])
 
-        system_prompt = """You are an HS code classification expert.
+        # Use prompts from config if available
+        config = self.configs.get("select_chapter_candidates", {})
+
+        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
 Select the BEST code. Provide confidence (0.0-1.0) and reasoning."""
 
-        user_prompt = f"""Product: "{product_description}"
+        user_prompt = get_prompt(
+            config, "user",
+            product_description=product_description,
+            candidates_text=candidates_text,
+            level=level_names[level.value]
+        ) or f"""Product: "{product_description}"
 Level: {level_names[level.value]}
 
 Candidates:
