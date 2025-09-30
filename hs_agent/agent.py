@@ -41,9 +41,8 @@ class HSAgent:
             except Exception as e:
                 print(f"⚠️  Langfuse initialization failed: {e}")
 
-        # Initialize models with Langfuse callbacks if available
-        callbacks = [self.langfuse_handler] if self.langfuse_handler else []
-        self.model = ChatVertexAI(model=self.model_name, callbacks=callbacks)
+        # Initialize models (callbacks will be passed to invoke, not constructor)
+        self.model = ChatVertexAI(model=self.model_name)
         self.ranking_model = self.model.with_structured_output(RankingOutput)
         self.selection_model = self.model.with_structured_output(SelectionOutput)
 
@@ -168,10 +167,12 @@ Codes to evaluate:
 Rank the top {top_k} most relevant codes."""
 
         try:
-            result = await self.ranking_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # Pass callbacks via config (SDK v3 pattern)
+            config = {"callbacks": [self.langfuse_handler]} if self.langfuse_handler else {}
+            result = await self.ranking_model.ainvoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+                config=config
+            )
 
             # Filter valid codes
             valid_candidates = []
@@ -225,10 +226,12 @@ Ranked candidates:
 Select the most accurate and specific code."""
 
         try:
-            result = await self.selection_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # Pass callbacks via config (SDK v3 pattern)
+            config = {"callbacks": [self.langfuse_handler]} if self.langfuse_handler else {}
+            result = await self.selection_model.ainvoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
+                config=config
+            )
             return result
 
         except Exception as e:
