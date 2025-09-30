@@ -48,6 +48,32 @@ class HSAgent:
 
     async def classify(self, product_description: str, top_k: int = 10) -> ClassificationResponse:
         """Classify a product to get its HS code."""
+        # Wrap in Langfuse span if enabled
+        if self.langfuse_handler:
+            from langfuse import get_client
+            langfuse = get_client()
+
+            with langfuse.start_as_current_span(name="HS_Classification") as span:
+                span.update_trace(
+                    input={"product_description": product_description, "top_k": top_k},
+                    metadata={"model": self.model_name}
+                )
+                result = await self._perform_classification(product_description, top_k)
+                span.update_trace(
+                    output={
+                        "final_code": result.final_code,
+                        "confidence": result.overall_confidence,
+                        "chapter": result.chapter.selected_code,
+                        "heading": result.heading.selected_code,
+                        "subheading": result.subheading.selected_code
+                    }
+                )
+                return result
+        else:
+            return await self._perform_classification(product_description, top_k)
+
+    async def _perform_classification(self, product_description: str, top_k: int) -> ClassificationResponse:
+        """Perform classification without Langfuse wrapping."""
         import time
         start = time.time()
 
@@ -167,12 +193,11 @@ Codes to evaluate:
 Rank the top {top_k} most relevant codes."""
 
         try:
-            # Pass callbacks via config (SDK v3 pattern)
-            config = {"callbacks": [self.langfuse_handler]} if self.langfuse_handler else {}
-            result = await self.ranking_model.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
-                config=config
-            )
+            # Don't pass callbacks to chatmodel - only trace at graph/span level
+            result = await self.ranking_model.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
 
             # Filter valid codes
             valid_candidates = []
@@ -226,12 +251,11 @@ Ranked candidates:
 Select the most accurate and specific code."""
 
         try:
-            # Pass callbacks via config (SDK v3 pattern)
-            config = {"callbacks": [self.langfuse_handler]} if self.langfuse_handler else {}
-            result = await self.selection_model.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
-                config=config
-            )
+            # Don't pass callbacks to chatmodel - only trace at graph/span level
+            result = await self.selection_model.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
             return result
 
         except Exception as e:
