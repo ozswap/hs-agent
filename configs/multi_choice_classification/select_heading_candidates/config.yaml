@@ -1,0 +1,65 @@
+# Select Heading Candidates Configuration
+
+name: "select_heading_candidates"
+description: "Refined selection of 1-3 best heading candidates under selected chapters"
+
+# LLM Call Configuration
+call_id: "heading_selection"
+model:
+  name: "gemini-2.5-flash-lite"
+  provider: "google"
+  family: "gemini"
+  version: "2.5-flash-lite"
+  description: "Balanced model for accurate heading selection"
+  parameters:
+    max_tokens: 8192
+    temperature: 0.1
+    top_p: 0.95
+
+# Input Configuration
+input:
+  product_description: "{product_description}"
+  ranked_candidates: "{ranked_candidates}"
+  parent_chapter: "{parent_chapter}"
+  level: "HEADING"
+  max_selections: 3
+
+# Parameters
+parameters:
+  selection_mode: "adaptive"
+  max_selections: 3
+  min_selections: 1
+  quality_focus: true
+  diversity_balance: 0.2
+  temperature: 0.2
+
+# Output Configuration
+output:
+  format: "MultiSelectionOutput"
+  include_reasoning: true
+  include_confidence: true
+  include_selection_rationale: true
+
+# Prompts
+prompts:
+  system: "prompts/system.md"
+  user: "prompts/user.md"
+
+# Quality Control
+quality:
+  min_confidence: 0.6
+  require_reasoning: true
+  validate_selections: true
+  check_diversity: true
+
+# Performance
+performance:
+  timeout_seconds: 45
+  max_retries: 2
+
+# Selection Logic
+selection_logic:
+  high_confidence_threshold: 0.8  # Select 1-2 headings
+  medium_confidence_threshold: 0.6  # Select 2-3 headings
+  ensure_unique_value: true
+  avoid_redundancy: true

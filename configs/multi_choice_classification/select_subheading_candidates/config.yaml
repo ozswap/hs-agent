@@ -1,0 +1,67 @@
+# Select Subheading Candidates Configuration
+
+name: "select_subheading_candidates"
+description: "Refined selection of 1-3 best subheading candidates - final HS classification"
+
+# LLM Call Configuration
+call_id: "subheading_selection"
+model:
+  name: "gemini-2.5-flash"
+  provider: "google"
+  family: "gemini"
+  version: "2.5-flash"
+  description: "Premium model for accurate final subheading selection"
+  parameters:
+    max_tokens: 8192
+    temperature: 0.1
+    top_p: 0.95
+
+# Input Configuration
+input:
+  product_description: "{product_description}"
+  ranked_candidates: "{ranked_candidates}"
+  parent_heading: "{parent_heading}"
+  level: "SUBHEADING"
+  max_selections: 3
+
+# Parameters
+parameters:
+  selection_mode: "adaptive"
+  max_selections: 3
+  min_selections: 1
+  quality_focus: true
+  diversity_balance: 0.3
+  temperature: 0.1
+
+# Output Configuration
+output:
+  format: "MultiSelectionOutput"
+  include_reasoning: true
+  include_confidence: true
+  include_selection_rationale: true
+
+# Prompts
+prompts:
+  system: "prompts/system.md"
+  user: "prompts/user.md"
+
+# Quality Control
+quality:
+  min_confidence: 0.7  # Higher threshold for final classification
+  require_reasoning: true
+  validate_selections: true
+  check_diversity: true
+
+# Performance
+performance:
+  timeout_seconds: 60
+  max_retries: 2
+
+# Selection Logic
+selection_logic:
+  high_confidence_threshold: 0.85  # Select 1 subheading
+  medium_confidence_threshold: 0.7  # Select 1-2 subheadings
+  low_confidence_threshold: 0.6     # Select 2-3 subheadings
+  ensure_unique_value: true
+  avoid_redundancy: true
+  prefer_precision: true

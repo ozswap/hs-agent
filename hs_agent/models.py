@@ -1,7 +1,7 @@
 """Core models for HS Agent."""
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from enum import Enum
 
 
@@ -53,10 +53,24 @@ class SelectionOutput(BaseModel):
 
 class MultiSelectionOutput(BaseModel):
     """LLM output for selecting multiple candidates."""
-    selected_codes: List[str] = Field(min_items=1)
-    individual_confidences: List[float]
+    selected_codes: List[str] = Field(min_items=1, max_items=3)
+    individual_confidences: List[float] = Field(min_items=1, max_items=3)
     overall_confidence: float
     reasoning: str
+
+    @model_validator(mode='after')
+    def validate_confidences_match_codes(self):
+        """Ensure confidences match codes length."""
+        if len(self.individual_confidences) != len(self.selected_codes):
+            # Pad with overall confidence if too short
+            if len(self.individual_confidences) < len(self.selected_codes):
+                self.individual_confidences = self.individual_confidences + [self.overall_confidence] * (
+                    len(self.selected_codes) - len(self.individual_confidences)
+                )
+            else:
+                # Truncate if too long
+                self.individual_confidences = self.individual_confidences[:len(self.selected_codes)]
+        return self
 
 
 # === Classification Results ===
@@ -96,4 +110,12 @@ class ClassificationResponse(BaseModel):
     chapter: ClassificationResult
     heading: ClassificationResult
     subheading: ClassificationResult
+    processing_time_ms: float
+
+
+class MultiChoiceClassificationResponse(BaseModel):
+    """API response for multi-choice classification (1-3 paths)."""
+    product_description: str
+    paths: List[ClassificationPath] = Field(min_items=1, max_items=3)
+    overall_strategy: str
     processing_time_ms: float

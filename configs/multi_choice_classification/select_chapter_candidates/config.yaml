@@ -6,10 +6,10 @@ description: "Refined selection of 1-3 best chapter candidates"
 # LLM Call Configuration
 call_id: "chapter_selection"
 model:
-  name: "gemini-2.5-flash"
+  name: "gemini-2.5-flash-lite"
   provider: "google"
   family: "gemini"
-  version: "2.5-flash"
+  version: "2.5-flash-lite"
   description: "Balanced model for accurate chapter selection"
   parameters:
     max_tokens: 8192

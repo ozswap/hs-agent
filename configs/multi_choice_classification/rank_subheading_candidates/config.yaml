@@ -1,0 +1,62 @@
+# Rank Subheading Candidates Configuration
+
+name: "rank_subheading_candidates"
+description: "Initial broad ranking of subheading candidates using high K value"
+
+# LLM Call Configuration
+call_id: "subheading_initial_ranking"
+model:
+  name: "gemini-2.5-flash-lite"
+  provider: "google"
+  family: "gemini"
+  version: "2.5-flash-lite"
+  description: "Fast, lightweight model for subheading ranking"
+  parameters:
+    max_tokens: 8192
+    temperature: 0.1
+    top_p: 0.95
+
+# Input Configuration
+input:
+  product_description: "{product_description}"
+  candidates: "{subheading_candidates}"
+  parent_heading: "{parent_heading}"
+  level: "SUBHEADING"
+  context: "Final level classification under heading"
+
+# Parameters
+parameters:
+  top_k: 20
+  ranking_strategy: "comprehensive"
+  include_edge_cases: true
+  ranking_depth: "broad"
+  temperature: 0.1
+
+# Output Configuration
+output:
+  format: "RankingOutput"
+  max_candidates: 20
+  include_reasoning: true
+  include_confidence: true
+
+# Prompts
+prompts:
+  system: "prompts/system.md"
+  user: "prompts/user.md"
+
+# Quality Control
+quality:
+  min_confidence: 0.1  # Lower threshold for initial ranking
+  require_all_fields: true
+  validate_ranking_order: true
+
+# Performance
+performance:
+  timeout_seconds: 30
+  max_retries: 2
+
+# Data Source
+data_source:
+  loader_field: "codes_6digit"
+  parent_code: "{parent_heading}"
+  filter_pattern: "^{parent_heading}"
