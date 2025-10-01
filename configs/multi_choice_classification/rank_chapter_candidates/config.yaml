@@ -1,0 +1,94 @@
+# Rank Chapter Candidates Configuration
+
+name: "rank_chapter_candidates"
+description: "Initial broad ranking of chapter candidates using high K value"
+
+# LLM Call Configuration
+call_id: "chapter_initial_ranking"
+model:
+  name: "gemini-2.5-flash-lite"
+  provider: "google"
+  family: "gemini"
+  version: "2.5-flash-lite"
+  description: "Fast, lightweight model for chapter ranking"
+  parameters:
+    max_tokens: 8192
+    temperature: 0.1
+    top_p: 0.95
+
+# Input Configuration
+input:
+  product_description: "{product_description}"
+  candidates: "{chapter_candidates}"
+  level: "CHAPTER"
+  context: "Root level classification"
+
+# Parameters
+parameters:
+  top_k: 20
+  ranking_strategy: "comprehensive"
+  include_edge_cases: true
+  ranking_depth: "broad"
+  temperature: 0.1
+
+# Output Configuration
+output:
+  format: "RankingOutput"
+  max_candidates: 20
+  include_reasoning: true
+  include_confidence: true
+  schema:
+    type: "object"
+    description: "prompts/output_schema.md"
+    properties:
+      ranked_candidates:
+        type: "array"
+        description: "List of ranked HS code candidates"
+        items:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "HS code (e.g., '84' for chapter)"
+            description:
+              type: "string"
+              description: "Official HS code description"
+            confidence:
+              type: "number"
+              minimum: 0.0
+              maximum: 1.0
+              description: "Confidence score for this ranking"
+            reasoning:
+              type: "string"
+              description: "Brief reasoning for this ranking position"
+      metadata:
+        type: "object"
+        properties:
+          total_candidates_ranked:
+            type: "integer"
+          ranking_strategy:
+            type: "string"
+          timestamp:
+            type: "string"
+
+# Prompts (references to files in prompts/ subfolder)
+prompts:
+  system: "prompts/system.md"
+  user: "prompts/user.md"
+
+# Quality Control
+quality:
+  min_confidence: 0.1  # Lower threshold for initial ranking
+  require_all_fields: true
+  validate_ranking_order: true
+
+# Performance
+performance:
+  timeout_seconds: 30
+  max_retries: 2
+
+# Data Source
+data_source:
+  loader_field: "codes_2digit"
+  parent_code: null
+  filter_pattern: null

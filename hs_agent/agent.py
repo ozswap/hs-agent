@@ -236,9 +236,11 @@ Rank top {top_k} most relevant codes."""
         """Select best code from candidates using config prompts."""
         level_names = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
 
-        candidates_text = "\n".join([
-            f"• {c['code']}: {c['description']} (score: {c['relevance_score']:.2f})"
-            for c in candidates
+        # Prepare candidate summaries
+        ranked_candidates_summary = ", ".join([c['code'] for c in candidates[:5]])
+        ranked_candidates_detailed = "\n".join([
+            f"{i+1}. Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
+            for i, c in enumerate(candidates)
         ])
 
         # Use prompts from config if available
@@ -250,13 +252,14 @@ Select the BEST code. Provide confidence (0.0-1.0) and reasoning."""
         user_prompt = get_prompt(
             config, "user",
             product_description=product_description,
-            candidates_text=candidates_text,
+            ranked_candidates_summary=ranked_candidates_summary,
+            ranked_candidates_detailed=ranked_candidates_detailed,
             level=level_names[level.value]
         ) or f"""Product: "{product_description}"
 Level: {level_names[level.value]}
 
 Candidates:
-{candidates_text}
+{ranked_candidates_detailed}
 
 Select the most accurate code."""
 

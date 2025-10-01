@@ -1,0 +1,101 @@
+# Rank Heading Candidates Configuration
+
+name: "rank_heading_candidates"
+description: "Rank heading candidates under selected chapters"
+
+# LLM Call Configuration
+call_id: "heading_initial_ranking"
+model:
+  name: "gemini-2.5-flash-lite"
+  provider: "google"
+  family: "gemini"
+  version: "2.5-flash-lite"
+  description: "Fast, lightweight model for heading ranking"
+  parameters:
+    max_tokens: 8192
+    temperature: 0.1
+    top_p: 0.95
+
+# Input Configuration
+input:
+  product_description: "{product_description}"
+  candidates: "{heading_candidates}"
+  level: "HEADING"
+  parent_chapter: "{parent_chapter_code}"
+  context: "Under chapter {parent_chapter_code}"
+
+# Parameters
+parameters:
+  top_k: 15
+  ranking_strategy: "focused"
+  include_edge_cases: false
+  ranking_depth: "moderate"
+  temperature: 0.1
+
+# Output Configuration
+output:
+  format: "RankingOutput"
+  max_candidates: 15
+  include_reasoning: true
+  include_confidence: true
+  schema:
+    type: "object"
+    description: "prompts/output_schema.md"
+    properties:
+      ranked_candidates:
+        type: "array"
+        description: "List of ranked heading candidates under the parent chapter"
+        items:
+          type: "object"
+          properties:
+            code:
+              type: "string"
+              description: "4-digit heading code (e.g., '8471')"
+            description:
+              type: "string"
+              description: "Official heading description"
+            confidence:
+              type: "number"
+              minimum: 0.0
+              maximum: 1.0
+              description: "Confidence score for this ranking"
+            reasoning:
+              type: "string"
+              description: "Reasoning for this position within the chapter context"
+            parent_chapter:
+              type: "string"
+              description: "Parent chapter code this heading belongs to"
+      metadata:
+        type: "object"
+        properties:
+          parent_chapter_code:
+            type: "string"
+          total_candidates_ranked:
+            type: "integer"
+          ranking_strategy:
+            type: "string"
+          context:
+            type: "string"
+
+# Prompts (references to files in prompts/ subfolder)
+prompts:
+  system: "prompts/system.md"
+  user: "prompts/user.md"
+
+# Quality Control
+quality:
+  min_confidence: 0.2
+  require_all_fields: true
+  validate_ranking_order: true
+  check_parent_relationship: true
+
+# Performance
+performance:
+  timeout_seconds: 25
+  max_retries: 2
+
+# Data Source
+data_source:
+  loader_field: "codes_4digit"
+  parent_code: "{parent_chapter_code}"
+  filter_pattern: "^{parent_chapter_code}"

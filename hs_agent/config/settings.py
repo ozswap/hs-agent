@@ -93,6 +93,12 @@ class HSAgentSettings(BaseSettings):
         description="Directory containing HS codes data",
         env="DATA_DIRECTORY"
     )
+
+    config_directory: Path = Field(
+        Path("configs"),
+        description="Directory containing configuration files",
+        env="CONFIG_DIRECTORY"
+    )
     
     hs_codes_file: str = Field(
         "hs_codes_all.csv",
