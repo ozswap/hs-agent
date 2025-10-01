@@ -59,13 +59,16 @@ performance:
 
 # Selection Logic
 selection_logic:
-  high_confidence_threshold: 0.8  # Fewer selections when confidence is very high
-  medium_confidence_threshold: 0.6  # More selections when confidence is moderate
+  selection_strategy: "maximize"  # Explore broadly at heading level
+  high_confidence_threshold: 0.8
+  medium_confidence_threshold: 0.6
   ensure_unique_value: true
   avoid_redundancy: true
   quality_guidelines: |
-    Adaptive selection based on confidence (max 3 selections):
-    - High confidence (>0.8): Fewer selections - focus on most certain
-    - Medium confidence (0.6-0.8): More selections - explore viable alternatives
-    - Ensure each selection adds unique value and isn't redundant
+    MAXIMIZE viable selections (aim for 3 unless clearly not justified):
+    - Select all headings that could reasonably apply to this product
+    - Err on the side of inclusion rather than exclusion
+    - Each selection should represent a distinct classification possibility
+    - Cast a wide net - we'll narrow down at the subheading stage
     - Provide detailed reasoning for each selection
+    - Only exclude headings that are clearly irrelevant

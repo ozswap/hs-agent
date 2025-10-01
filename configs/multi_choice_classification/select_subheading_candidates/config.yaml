@@ -59,17 +59,21 @@ performance:
 
 # Selection Logic
 selection_logic:
-  high_confidence_threshold: 0.85  # Fewer selections when confidence is very high
-  medium_confidence_threshold: 0.7  # More selections when confidence is moderate
-  low_confidence_threshold: 0.6     # Maximum selections when confidence is lower
+  selection_strategy: "specialize"  # Be selective and precise at final level
+  high_confidence_threshold: 0.85
+  medium_confidence_threshold: 0.7
+  low_confidence_threshold: 0.6
   ensure_unique_value: true
   avoid_redundancy: true
   prefer_precision: true
   quality_guidelines: |
-    Adaptive selection based on confidence (max 3 selections):
-    - High confidence (>0.85): Fewer selections - maximum precision and certainty
-    - Medium confidence (0.7-0.85): More selections - explore strong alternatives
-    - Lower confidence (0.6-0.7): Maximum selections - explore all viable options
-    - Ensure each selection adds unique value and isn't redundant
+    SPECIALIZE and be selective (prioritize quality over quantity):
+    - This is the FINAL HS code classification - prioritize ACCURACY
+    - Select ONLY the most defensible, precise classifications
+    - High confidence (>0.85): Select 1 code - maximum certainty
+    - Medium confidence (0.7-0.85): Select 1-2 codes - only if truly competitive
+    - Lower confidence (0.6-0.7): Select 2-3 codes - explore viable alternatives
+    - Each selection must be fully justified and defensible
     - Provide detailed reasoning for each selection
-    - This is the FINAL HS code - prioritize accuracy over quantity
+    - When in doubt, prefer fewer, better selections over more uncertain ones
+    - Quality and precision over quantity
