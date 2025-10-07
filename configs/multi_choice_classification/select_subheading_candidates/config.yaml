@@ -10,11 +10,12 @@ model:
   provider: "google"
   family: "gemini"
   version: "2.5-flash"
-  description: "Premium model for accurate final subheading selection"
+  description: "Fast model for accurate final subheading selection"
   parameters:
     max_tokens: 8192
     temperature: 0.1
     top_p: 0.95
+    thinking_budget: 0  # Disable thinking mode for faster responses
 
 # Input Configuration
 input:

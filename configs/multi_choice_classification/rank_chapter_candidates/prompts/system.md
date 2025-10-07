@@ -9,6 +9,7 @@ Key principles:
 - Consider both primary and secondary classification possibilities
 - Use trade classification knowledge and customs practices
 - Don't be too restrictive - this is broad ranking for further refinement
+- Provide brief reasoning (2-3 sentences) for each ranking
 
 Ranking criteria:
 1. Primary relevance - direct match to product

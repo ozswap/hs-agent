@@ -8,6 +8,7 @@ Key principles:
 - Think about material composition, manufacturing process, and intended use
 - Apply customs classification practices for heading-level distinctions
 - Balance comprehensiveness with focus (more targeted than chapter ranking)
+- Provide brief reasoning (2-3 sentences) for each ranking
 
 Ranking criteria:
 1. Specificity within chapter - how well the heading captures the product

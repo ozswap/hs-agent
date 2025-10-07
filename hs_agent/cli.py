@@ -1,55 +1,222 @@
-"""Simple CLI for HS Agent."""
+"""Unified CLI for HS Agent using Typer."""
 
 import asyncio
 import sys
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
 from hs_agent.agent import HSAgent
 from hs_agent.data_loader import HSDataLoader
 from hs_agent.config.settings import settings
 
-
-def print_result(result):
-    """Print classification result."""
-    print("\n" + "="*60)
-    print(f"Product: {result.product_description}")
-    print("="*60)
-    print(f"\n📊 CHAPTER: {result.chapter.selected_code}")
-    print(f"   Confidence: {result.chapter.confidence:.2f}")
-    print(f"   Reasoning: {result.chapter.reasoning[:100]}...")
-
-    print(f"\n📋 HEADING: {result.heading.selected_code}")
-    print(f"   Confidence: {result.heading.confidence:.2f}")
-    print(f"   Reasoning: {result.heading.reasoning[:100]}...")
-
-    print(f"\n🎯 SUBHEADING: {result.subheading.selected_code}")
-    print(f"   Confidence: {result.subheading.confidence:.2f}")
-    print(f"   Reasoning: {result.subheading.reasoning[:100]}...")
-
-    print(f"\n✅ FINAL HS CODE: {result.final_code}")
-    print(f"🎯 OVERALL CONFIDENCE: {result.overall_confidence:.2f}")
-    print(f"⏱️  Processing time: {result.processing_time_ms:.0f}ms")
-    print("="*60 + "\n")
+app = typer.Typer(
+    name="hs-agent",
+    help="AI-powered HS code classification service",
+    add_completion=False
+)
+console = Console()
 
 
-async def main():
-    """Main CLI function."""
-    if len(sys.argv) < 2:
-        print("Usage: python -m hs_agent.cli_simple \"product description\"")
-        print("Example: python -m hs_agent.cli_simple \"laptop computer\"")
-        sys.exit(1)
+def print_single_result(result):
+    """Print single classification result in a nice format."""
+    console.print("\n" + "=" * 80, style="bold blue")
+    console.print(f"Product: {result.product_description}", style="bold")
+    console.print("=" * 80, style="bold blue")
 
-    product_description = " ".join(sys.argv[1:])
+    console.print(f"\n📊 CHAPTER: [bold cyan]{result.chapter.selected_code}[/bold cyan]")
+    console.print(f"   Confidence: [green]{result.chapter.confidence:.2f}[/green]")
+    console.print(f"   Reasoning: {result.chapter.reasoning[:100]}...")
 
-    print("Initializing HS Agent...")
-    loader = HSDataLoader()
-    loader.load_all_data()
+    console.print(f"\n📋 HEADING: [bold cyan]{result.heading.selected_code}[/bold cyan]")
+    console.print(f"   Confidence: [green]{result.heading.confidence:.2f}[/green]")
+    console.print(f"   Reasoning: {result.heading.reasoning[:100]}...")
 
-    agent = HSAgent(loader)
+    console.print(f"\n🎯 SUBHEADING: [bold cyan]{result.subheading.selected_code}[/bold cyan]")
+    console.print(f"   Confidence: [green]{result.subheading.confidence:.2f}[/green]")
+    console.print(f"   Reasoning: {result.subheading.reasoning[:100]}...")
 
-    print(f"\nClassifying: {product_description}\n")
-    result = await agent.classify(product_description)
+    console.print(f"\n✅ FINAL HS CODE: [bold green]{result.final_code}[/bold green]")
+    console.print(f"🎯 OVERALL CONFIDENCE: [bold yellow]{result.overall_confidence:.2f}[/bold yellow]")
+    console.print(f"⏱️  Processing time: [dim]{result.processing_time_ms:.0f}ms[/dim]")
+    console.print("=" * 80 + "\n", style="bold blue")
 
-    print_result(result)
+
+def print_multi_result(result):
+    """Print multi-choice classification result in a nice format."""
+    console.print("\n" + "=" * 80, style="bold magenta")
+    console.print(f"Product: {result.product_description}", style="bold")
+    console.print(f"Strategy: {result.overall_strategy}", style="dim")
+    console.print("=" * 80, style="bold magenta")
+
+    for i, path in enumerate(result.paths, 1):
+        console.print(f"\n🔹 Path {i}:", style="bold cyan")
+        console.print(f"   Chapter:    {path.chapter_code}")
+        console.print(f"   Heading:    {path.heading_code}")
+        console.print(f"   Subheading: [bold green]{path.subheading_code}[/bold green]")
+        console.print(f"   Confidence: [yellow]{path.path_confidence:.2f}[/yellow]")
+        console.print(f"   Chapter reasoning:    {path.chapter_reasoning[:80]}...")
+        console.print(f"   Heading reasoning:    {path.heading_reasoning[:80]}...")
+        console.print(f"   Subheading reasoning: {path.subheading_reasoning[:80]}...")
+
+    console.print(f"\n⏱️  Processing time: [dim]{result.processing_time_ms:.0f}ms[/dim]")
+    console.print("=" * 80 + "\n", style="bold magenta")
+
+
+@app.command()
+def classify(
+    product_description: str = typer.Argument(..., help="Product description to classify"),
+    top_k: int = typer.Option(10, "--top-k", "-k", help="Number of candidates to consider at each level")
+):
+    """
+    Classify a product description to a single HS code (one-to-one).
+
+    Example:
+        hs-agent classify "laptop computer"
+    """
+    async def run():
+        with console.status("[bold green]Initializing HS Agent..."):
+            loader = HSDataLoader()
+            loader.load_all_data()
+            agent = HSAgent(loader)
+
+        console.print(f"\n[bold]Classifying:[/bold] {product_description}\n")
+
+        with console.status("[bold yellow]Processing..."):
+            result = await agent.classify(product_description, top_k=top_k)
+
+        print_single_result(result)
+
+    asyncio.run(run())
+
+
+@app.command()
+def classify_multi(
+    product_description: str = typer.Argument(..., help="Product description to classify"),
+    top_k: int = typer.Option(10, "--top-k", "-k", help="Number of candidates to consider at each level"),
+    max_selections: int = typer.Option(3, "--max-selections", "-m", help="Maximum number of codes to select at each level (1 to N)")
+):
+    """
+    Classify a product description to 1-N possible HS codes (one-to-many).
+
+    Example:
+        hs-agent classify-multi "cotton shirt" --max-selections 3
+    """
+    async def run():
+        with console.status("[bold green]Initializing HS Agent..."):
+            loader = HSDataLoader()
+            loader.load_all_data()
+            agent = HSAgent(loader)
+
+        console.print(f"\n[bold]Multi-classifying:[/bold] {product_description}")
+        console.print(f"[dim]Max selections per level: {max_selections}[/dim]\n")
+
+        with console.status("[bold yellow]Processing multiple paths..."):
+            result = await agent.classify_multi(product_description, top_k=top_k, max_selections=max_selections)
+
+        print_multi_result(result)
+
+    asyncio.run(run())
+
+
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to"),
+    port: int = typer.Option(None, "--port", "-p", help="Port to bind to"),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development")
+):
+    """
+    Start the FastAPI server.
+
+    Example:
+        hs-agent serve --port 8080 --reload
+    """
+    import uvicorn
+    from hs_agent.config.settings import settings
+
+    actual_port = port if port is not None else settings.api_port
+
+    console.print(f"\n[bold green]Starting HS Agent API server...[/bold green]")
+    console.print(f"  Host: {host}")
+    console.print(f"  Port: {actual_port}")
+    console.print(f"  Docs: http://{host if host != '0.0.0.0' else 'localhost'}:{actual_port}/docs\n")
+
+    uvicorn.run(
+        "app:app",
+        host=host,
+        port=actual_port,
+        reload=reload
+    )
+
+
+@app.command()
+def health():
+    """
+    Check the health status of the HS Agent system.
+
+    Example:
+        hs-agent health
+    """
+    async def run():
+        try:
+            with console.status("[bold green]Checking system health..."):
+                loader = HSDataLoader()
+                loader.load_all_data()
+                agent = HSAgent(loader)
+
+            table = Table(title="HS Agent Health Status", show_header=True, header_style="bold magenta")
+            table.add_column("Component", style="cyan")
+            table.add_column("Status", style="green")
+            table.add_column("Details", style="dim")
+
+            table.add_row("System", "✅ Healthy", "All components initialized")
+            table.add_row("Model", "✅ Ready", settings.default_model_name)
+            table.add_row("Chapters", "✅ Loaded", str(len(agent.data_loader.codes_2digit)))
+            table.add_row("Headings", "✅ Loaded", str(len(agent.data_loader.codes_4digit)))
+            table.add_row("Subheadings", "✅ Loaded", str(len(agent.data_loader.codes_6digit)))
+
+            console.print()
+            console.print(table)
+            console.print()
+
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Health Check Failed[/bold red]")
+            console.print(f"Error: {e}\n")
+            sys.exit(1)
+
+    asyncio.run(run())
+
+
+@app.command()
+def config():
+    """
+    Display current configuration settings.
+
+    Example:
+        hs-agent config
+    """
+    table = Table(title="HS Agent Configuration", show_header=True, header_style="bold magenta")
+    table.add_column("Setting", style="cyan")
+    table.add_column("Value", style="green")
+
+    table.add_row("Default Model", settings.default_model_name)
+    table.add_row("API Port", str(settings.api_port))
+    table.add_row("Max Output Paths", str(settings.max_output_paths))
+    table.add_row("Langfuse Enabled", str(settings.langfuse_enabled))
+    if settings.langfuse_enabled:
+        table.add_row("Langfuse Host", settings.langfuse_host)
+
+    console.print()
+    console.print(table)
+    console.print()
+
+
+def main():
+    """Main entry point for CLI."""
+    app()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

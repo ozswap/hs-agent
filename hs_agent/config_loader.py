@@ -83,8 +83,9 @@ def get_model_params(config: Dict[str, Any]) -> Dict[str, Any]:
     params = model_config.get("parameters", {})
 
     return {
-        "model_name": model_config.get("name", "gemini-2.5-flash-lite"),
+        "model_name": model_config.get("name", "gemini-2.5-flash"),
         "temperature": params.get("temperature", 0.1),
         "max_tokens": params.get("max_tokens", 8192),
         "top_p": params.get("top_p", 0.95),
+        "thinking_budget": params.get("thinking_budget"),
     }

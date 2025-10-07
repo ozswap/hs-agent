@@ -117,7 +117,7 @@ class HSAgentSettings(BaseSettings):
     langfuse_secret_key: Optional[str] = Field(None, env="LANGFUSE_SECRET_KEY")
     
     # Model Configuration
-    default_model_name: str = Field("gemini-2.5-flash-lite", env="DEFAULT_MODEL_NAME")
+    default_model_name: str = Field("gemini-2.5-flash", env="DEFAULT_MODEL_NAME")
     default_agent_type: AgentType = Field(AgentType.LANGGRAPH, env="DEFAULT_AGENT_TYPE")
     
     # Data Configuration

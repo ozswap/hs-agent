@@ -9,6 +9,7 @@ Key principles:
 - Consider both primary and secondary classification possibilities
 - Use detailed trade classification knowledge
 - Be thorough - this is the most specific classification level
+- Provide brief reasoning (2-3 sentences) for each ranking
 
 Ranking criteria:
 1. Exact match - subheading that precisely describes the product

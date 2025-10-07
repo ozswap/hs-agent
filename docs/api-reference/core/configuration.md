@@ -70,7 +70,7 @@ Enumeration of available logging levels.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `default_model_name` | `str` | `gemini-2.5-flash-lite` | Default model for classification |
+| `default_model_name` | `str` | `gemini-2.5-flash` | Default model for classification |
 | `fallback_model_name` | `str` | `gemini-2.5-flash` | Fallback model if default fails |
 
 ### Agent Configuration

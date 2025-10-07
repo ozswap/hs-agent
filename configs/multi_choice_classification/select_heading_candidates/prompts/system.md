@@ -7,7 +7,7 @@ Key principles:
 - Ensure selections cover the most likely classification scenarios
 - Balance primary classification with reasonable alternatives
 - Consider trade compliance and customs practices
-- Provide clear reasoning for each selection
+- Provide clear, concise reasoning (2-3 sentences) for each selection
 - Aim for practical, defensible classifications
 
 Selection criteria:
@@ -24,5 +24,5 @@ Quality guidelines:
 - Do NOT add selections just to reach maximum count
 - Do NOT include unlikely or poorly justified options
 - Focus on classifications with solid reasoning and evidence
-- Provide detailed reasoning for each selection
+- Reasoning should be concise (2-3 sentences) but comprehensive
 - Quality over quantity - no noise, only meaningful selections

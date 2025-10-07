@@ -142,7 +142,7 @@ Current Settings
 │ Setting             │ Value                │ Source      │
 ├─────────────────────┼──────────────────────┼─────────────┤
 │ Default Agent Type  │ langgraph            │ config      │
-│ Default Model       │ gemini-2.5-flash-lite│ config      │
+│ Default Model       │ gemini-2.5-flash│ config      │
 │ Data Directory      │ /path/to/data        │ config      │
 │ Log Level           │ INFO                 │ config      │
 │ Google API Key      │ AIzaSyAb****xyz     │ environment │
@@ -200,7 +200,7 @@ hs-agent version
 ```
 HS Agent v0.1.0
 Configuration: langgraph agent
-Model: gemini-2.5-flash-lite
+Model: gemini-2.5-flash
 ```
 
 ## 🎨 Rich Terminal Features

@@ -32,7 +32,7 @@ The configuration is organized into logical groups:
 
 | Setting | Environment Variable | Default | Description |
 |---------|---------------------|---------|-------------|
-| `default_model_name` | `DEFAULT_MODEL_NAME` | `gemini-2.5-flash-lite` | Default model for classification |
+| `default_model_name` | `DEFAULT_MODEL_NAME` | `gemini-2.5-flash` | Default model for classification |
 | `fallback_model_name` | `FALLBACK_MODEL_NAME` | `gemini-2.5-flash` | Fallback model if default fails |
 
 ### Agent Configuration
@@ -99,7 +99,7 @@ LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key
 LANGFUSE_HOST=https://cloud.langfuse.com
 
 # Optional: Model Configuration
-DEFAULT_MODEL_NAME=gemini-2.5-flash-lite
+DEFAULT_MODEL_NAME=gemini-2.5-flash
 DEFAULT_AGENT_TYPE=langgraph
 
 # Optional: Performance Tuning

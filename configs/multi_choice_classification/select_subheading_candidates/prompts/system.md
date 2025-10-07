@@ -26,6 +26,6 @@ Quality guidelines (SPECIALIZE - maximum precision):
 - Each selection must be strongly justified and defensible
 - Do NOT add selections just to increase count
 - Do NOT include weak or unlikely options
-- Provide detailed, specific reasoning for each selection
+- Reasoning should be concise (2-3 sentences) but highly specific
 - Quality and precision over quantity
 - Consider real-world trade and compliance implications
