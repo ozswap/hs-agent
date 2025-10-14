@@ -1,0 +1,113 @@
+# Wide Net Classification Workflow
+
+name: "wide_net_classification"
+version: "1.0.0"
+description: "HS code classification that casts a wide net by exploring multiple paths, then selects the single best code through comparison"
+
+workflow_type: "hierarchical_wide_net_classification"
+
+# Workflow Overview
+overview: |
+  This workflow casts a WIDE NET to find the best HS code:
+
+  1. EXPLORATION PHASE: Cast a wide net by exploring multiple paths
+     - At each level (chapter → heading → subheading), select 1-N candidates
+     - Build all possible complete paths from these selections
+     - Each path has its own confidence scores and reasoning
+     - The goal is to explore the classification space thoroughly
+
+  2. SELECTION PHASE: Select the single best HS code
+     - Compare all paths holistically
+     - Evaluate reasoning quality, specificity, and trade compliance
+     - Select THE SINGLE BEST HS code with detailed justification
+
+  Unlike traditional single-path classification, this approach explores
+  multiple possibilities before converging on the best final answer.
+
+  Result: ONE HS code, but with higher confidence because we explored broadly.
+
+# Workflow Steps
+steps:
+  - step: 1
+    name: "rank_chapter_candidates"
+    type: "ranking"
+    level: "chapter"
+    description: "Rank all 2-digit chapter codes by relevance"
+
+  - step: 2
+    name: "select_chapter_candidates"
+    type: "multi_selection"
+    level: "chapter"
+    description: "Select 1-N best chapters (maximize exploration early)"
+
+  - step: 3
+    name: "rank_heading_candidates"
+    type: "ranking"
+    level: "heading"
+    description: "For each selected chapter, rank 4-digit heading codes"
+
+  - step: 4
+    name: "select_heading_candidates"
+    type: "multi_selection"
+    level: "heading"
+    description: "Select 1-N best headings per chapter (balance breadth)"
+
+  - step: 5
+    name: "rank_subheading_candidates"
+    type: "ranking"
+    level: "subheading"
+    description: "For each selected heading, rank 6-digit subheading codes"
+
+  - step: 6
+    name: "select_subheading_candidates"
+    type: "multi_selection"
+    level: "subheading"
+    description: "Select 1-N best subheadings per heading (specialize)"
+
+  - step: 7
+    name: "build_paths"
+    type: "path_construction"
+    description: "Construct all complete classification paths from selections"
+
+  - step: 8
+    name: "compare_final_codes"
+    type: "final_comparison"
+    description: "Compare all paths and select THE SINGLE BEST HS code"
+
+# Configuration Strategy
+strategy:
+  selection_approach: "funnel"
+  early_levels: "maximize_exploration"  # More selections at chapter/heading
+  final_level: "maximize_precision"      # Fewer, better selections at subheading
+  comparison: "holistic_evaluation"      # Consider complete reasoning chains
+
+# Default Parameters
+defaults:
+  top_k: 10                    # Number of candidates to rank at each level
+  max_selections: 3            # Maximum selections per level
+  max_output_paths: 10         # Maximum paths to return before comparison
+  enable_comparison: true      # Always perform final comparison
+
+# Quality Guidelines
+quality:
+  min_overall_confidence: 0.6
+  require_reasoning_at_all_levels: true
+  validate_hierarchical_consistency: true
+  ensure_final_comparison: true
+
+# Use Cases
+use_cases:
+  - "Ambiguous products that could fit multiple categories"
+  - "Products requiring expert comparison of trade-offs"
+  - "High-stakes classifications requiring detailed justification"
+  - "Products where multiple valid paths exist"
+  - "Cases requiring defensible final decision with alternatives considered"
+
+# Advantages
+advantages:
+  - "Explores multiple classification paths systematically"
+  - "Provides transparency into alternative classifications"
+  - "Final comparison ensures single, well-justified decision"
+  - "Reasoning explains why selected code is superior"
+  - "Combines breadth of exploration with precision of final selection"
+  - "More defensible for trade compliance and customs disputes"

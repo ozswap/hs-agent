@@ -1,80 +1,33 @@
-# Select Subheading Candidates Configuration
-
-name: "select_subheading_candidates"
-description: "Refined selection of 1-3 best subheading candidates - final HS classification"
-
-# LLM Call Configuration
-call_id: "subheading_selection"
 model:
-  name: "gemini-2.5-flash"
-  provider: "google"
-  family: "gemini"
-  version: "2.5-flash"
-  description: "Fast model for accurate final subheading selection"
+  name: gemini-2.5-flash
   parameters:
-    max_tokens: 8192
     temperature: 0.1
+    max_tokens: 8192
     top_p: 0.95
-    thinking_budget: 0  # Disable thinking mode for faster responses
-
-# Input Configuration
-input:
-  product_description: "{product_description}"
-  ranked_candidates: "{ranked_candidates}"
-  parent_heading: "{parent_heading}"
-  level: "SUBHEADING"
-  max_selections: 3
-
-# Parameters
-parameters:
-  selection_mode: "adaptive"
-  max_selections: 3
-  min_selections: 1
-  quality_focus: true
-  diversity_balance: 0.3
-  temperature: 0.1
-
-# Output Configuration
-output:
-  format: "MultiSelectionOutput"
-  include_reasoning: true
-  include_confidence: true
-  include_selection_rationale: true
-
-# Prompts
+    thinking_budget: 0
 prompts:
-  system: "prompts/system.md"
-  user: "prompts/user.md"
+  system: prompts/system.md
+  user: prompts/user.md
 
-# Quality Control
-quality:
-  min_confidence: 0.7  # Higher threshold for final classification
-  require_reasoning: true
-  validate_selections: true
-  check_diversity: true
-
-# Performance
-performance:
-  timeout_seconds: 60
-  max_retries: 2
-
-# Selection Logic
-selection_logic:
-  selection_strategy: "specialize"  # Be selective and precise at final level
-  high_confidence_threshold: 0.85
-  medium_confidence_threshold: 0.7
-  low_confidence_threshold: 0.6
-  ensure_unique_value: true
-  avoid_redundancy: true
-  prefer_precision: true
-  quality_guidelines: |
-    SPECIALIZE and be selective (prioritize quality over quantity):
-    - This is the FINAL HS code classification - prioritize ACCURACY
-    - Select ONLY the most defensible, precise classifications
-    - High confidence (>0.85): Select 1 code - maximum certainty
-    - Medium confidence (0.7-0.85): Select 1-2 codes - only if truly competitive
-    - Lower confidence (0.6-0.7): Select 2-3 codes - explore viable alternatives
-    - Each selection must be fully justified and defensible
-    - Provide detailed reasoning for each selection
-    - When in doubt, prefer fewer, better selections over more uncertain ones
-    - Quality and precision over quantity
+output_schema:
+  title: "MultiSelectionOutput"
+  description: "prompts/output_schema.md"
+  type: "object"
+  properties:
+    selected_codes:
+      type: "array"
+      description: "1 to N selected HS codes"
+      items:
+        type: "string"
+    individual_confidences:
+      type: "array"
+      description: "Confidence for each selected code"
+      items:
+        type: "number"
+    overall_confidence:
+      type: "number"
+      description: "Overall confidence in the selection set"
+    reasoning:
+      type: "string"
+      description: "Detailed reasoning for the selections"
+  required: ["selected_codes", "individual_confidences", "overall_confidence", "reasoning"]

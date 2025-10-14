@@ -53,3 +53,9 @@ class MultiChoiceState(TypedDict):
     # Final results (1-N complete paths)
     paths: Optional[List[ClassificationPath]]
     overall_strategy: Optional[str]
+
+    # Final comparison results (single best code from all paths)
+    final_selected_code: Optional[str]
+    final_confidence: Optional[float]
+    final_reasoning: Optional[str]
+    comparison_summary: Optional[str]

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi Classification - HS Agent</title>
+    <title>Multi-Path Classification - HS Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -46,11 +46,11 @@
     <div class="gradient-bg text-white py-4 shadow-lg">
         <div class="container mx-auto px-4 flex items-center justify-between">
             <div>
-                <h1 class="text-2xl font-bold">Multi Classification</h1>
-                <p class="text-gray-200 text-sm">One-to-many HS code mapping</p>
+                <h1 class="text-2xl font-bold">Multi-Path Classification</h1>
+                <p class="text-gray-200 text-sm">Explore multiple possible HS code paths</p>
             </div>
             <a href="/" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition">
-                � Dashboard
+                Dashboard
             </a>
         </div>
     </div>
@@ -72,7 +72,7 @@
                         placeholder="e.g., Child car seats and restraints"
                         required
                     ></textarea>
-                    <p class="text-xs text-gray-500 mt-1">Describe ambiguous products that could fit multiple HS codes</p>
+                    <p class="text-xs text-gray-500 mt-1">Describe products that could fit multiple HS codes</p>
                 </div>
 
                 <div>
@@ -221,22 +221,17 @@
 
             // Display summary
             summaryContent.innerHTML = `
-                <div class="grid md:grid-cols-3 gap-4 text-center">
+                <div class="grid md:grid-cols-2 gap-4 text-center">
                     <div class="bg-indigo-50 rounded-lg p-4">
                         <p class="text-3xl font-bold text-indigo-600">${data.paths.length}</p>
                         <p class="text-sm text-gray-600">Classification Paths</p>
                     </div>
                     <div class="bg-purple-50 rounded-lg p-4">
-                        <p class="text-3xl font-bold text-purple-600">${data.paths[0].subheading_code}</p>
-                        <p class="text-sm text-gray-600">Best Match</p>
-                    </div>
-                    <div class="bg-green-50 rounded-lg p-4">
-                        <p class="text-3xl font-bold text-green-600">${confidencePercent(data.paths[0].path_confidence)}%</p>
-                        <p class="text-sm text-gray-600">Confidence</p>
+                        <p class="text-3xl font-bold text-purple-600">${data.processing_time_ms.toFixed(0)}ms</p>
+                        <p class="text-sm text-gray-600">Processing Time</p>
                     </div>
                 </div>
                 <p class="text-sm text-gray-600 mt-4">${data.overall_strategy}</p>
-                <p class="text-xs text-gray-500 mt-1">Processing Time: ${data.processing_time_ms.toFixed(0)}ms</p>
             `;
             resultsSummary.classList.remove('hidden');
 

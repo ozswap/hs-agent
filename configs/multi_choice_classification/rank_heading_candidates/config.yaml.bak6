@@ -1,0 +1,37 @@
+model:
+  name: gemini-2.5-flash
+  parameters:
+    temperature: 0.1
+    max_tokens: 8192
+    top_p: 0.95
+    thinking_budget: 0
+prompts:
+  system: prompts/system.md
+  user: prompts/user.md
+
+output_schema:
+  RankingOutput:
+    ranked_candidates:
+      type: "List[RankedCandidate]"
+      description: "Array of heading objects under the parent chapter, sorted by relevance"
+    reasoning:
+      type: "str"
+      description: "Overall justification for the ranking strategy"
+
+  RankedCandidate:
+    code:
+      type: "str"
+      description: "4-digit heading code"
+    description:
+      type: "str"
+      description: "Heading description"
+    relevance_score:
+      type: "float"
+      description: "Relevance score reflecting fit within the specific chapter context"
+    reasoning:
+      type: "str"
+      description: "Justification focused on heading-level distinctions (material, function, manufacturing)"
+    parent_chapter:
+      type: "str"
+      description: "Parent chapter code for validation"
+

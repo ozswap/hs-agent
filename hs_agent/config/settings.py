@@ -87,15 +87,21 @@ class HSAgentSettings(BaseSettings):
         le=50
     )
     
+    root_directory: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent,
+        description="Root directory of the project",
+        env="ROOT_DIRECTORY"
+    )
+    
     # === Data Configuration ===
     data_directory: Path = Field(
-        Path("data"),
+        default_factory=lambda: Path(__file__).parent.parent.parent / "data",
         description="Directory containing HS codes data",
         env="DATA_DIRECTORY"
     )
 
     config_directory: Path = Field(
-        Path("configs"),
+        default_factory=lambda: Path(__file__).parent.parent.parent / "configs",
         description="Directory containing configuration files",
         env="CONFIG_DIRECTORY"
     )

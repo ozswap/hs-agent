@@ -29,48 +29,8 @@ class HSCandidate(BaseModel):
 
 
 # === LLM Output Models ===
-
-class RankedCandidate(BaseModel):
-    """Ranked HS code candidate from LLM."""
-    code: str
-    description: str
-    relevance_score: float
-    justification: str
-
-
-class RankingOutput(BaseModel):
-    """LLM output for ranking candidates."""
-    ranked_candidates: List[RankedCandidate]
-    reasoning: str
-
-
-class SelectionOutput(BaseModel):
-    """LLM output for selecting best candidate."""
-    selected_code: str
-    confidence: float
-    reasoning: str
-
-
-class MultiSelectionOutput(BaseModel):
-    """LLM output for selecting multiple candidates (1 to N codes)."""
-    selected_codes: List[str] = Field(min_length=1, description="1 to N selected codes")
-    individual_confidences: List[float] = Field(min_length=1, description="Confidence for each selected code")
-    overall_confidence: float
-    reasoning: str
-
-    @model_validator(mode='after')
-    def validate_confidences_match_codes(self):
-        """Ensure confidences match codes length."""
-        if len(self.individual_confidences) != len(self.selected_codes):
-            # Pad with overall confidence if too short
-            if len(self.individual_confidences) < len(self.selected_codes):
-                self.individual_confidences = self.individual_confidences + [self.overall_confidence] * (
-                    len(self.selected_codes) - len(self.individual_confidences)
-                )
-            else:
-                # Truncate if too long
-                self.individual_confidences = self.individual_confidences[:len(self.selected_codes)]
-        return self
+# Note: LLM output models are now defined in config files as the single source of truth.
+# Dynamic models are created at runtime from config schemas.
 
 
 # === Classification Results ===
@@ -112,6 +72,16 @@ class ClassificationRequest(BaseModel):
         ge=1,
         le=50
     )
+    high_performance: bool = Field(
+        default=False,
+        description="Use wide net approach: explores multiple paths and applies chapter notes for highest accuracy (slower but more accurate)"
+    )
+    max_selections: int = Field(
+        default=3,
+        description="Only used with high_performance=True. Number of paths to explore at each level.",
+        ge=1,
+        le=10
+    )
 
 
 class MultiChoiceClassificationRequest(BaseModel):
@@ -143,6 +113,10 @@ class ClassificationResponse(BaseModel):
     heading: ClassificationResult
     subheading: ClassificationResult
     processing_time_ms: float
+    # High performance mode results (only present when high_performance=True)
+    paths_explored: Optional[List[ClassificationPath]] = Field(None, description="All paths explored in high performance mode")
+    comparison_reasoning: Optional[str] = Field(None, description="Reasoning for final selection using chapter notes")
+    comparison_summary: Optional[str] = Field(None, description="Summary of path comparison")
 
 
 class MultiChoiceClassificationResponse(BaseModel):
@@ -151,3 +125,8 @@ class MultiChoiceClassificationResponse(BaseModel):
     paths: List[ClassificationPath] = Field(min_length=1, description="1 to N classification paths")
     overall_strategy: str
     processing_time_ms: float
+    # Final comparison results (optional - only if comparison is performed)
+    final_selected_code: Optional[str] = Field(None, description="Single best HS code selected from all paths")
+    final_confidence: Optional[float] = Field(None, description="Confidence in the final selection")
+    final_reasoning: Optional[str] = Field(None, description="Reasoning for the final selection")
+    comparison_summary: Optional[str] = Field(None, description="Summary of the comparison process")

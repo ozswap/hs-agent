@@ -85,6 +85,40 @@
                         <p class="text-xs text-gray-500 mt-1">Number of candidates to consider during ranking (default: 10)</p>
                     </div>
 
+                    <!-- High Performance Mode Toggle -->
+                    <div class="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id="highPerformance"
+                                    class="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500"
+                                    onchange="toggleMaxSelections()"
+                                />
+                                <span class="ml-2 text-sm font-semibold text-gray-700">🚀 High Performance Mode</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-600 mb-3">
+                            Explores multiple paths with chapter notes for highest accuracy (slower but more thorough)
+                        </p>
+
+                        <!-- Max Selections (conditional) -->
+                        <div id="maxSelectionsContainer" class="hidden">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Max Paths to Explore
+                            </label>
+                            <input
+                                type="number"
+                                id="maxSelections"
+                                value="3"
+                                min="1"
+                                max="10"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Number of paths to explore at each level (default: 3)</p>
+                        </div>
+                    </div>
+
                     <button
                         type="submit"
                         id="submitBtn"
@@ -128,11 +162,24 @@
 
         let currentResult = null;
 
+        function toggleMaxSelections() {
+            const highPerformance = document.getElementById('highPerformance').checked;
+            const maxSelectionsContainer = document.getElementById('maxSelectionsContainer');
+
+            if (highPerformance) {
+                maxSelectionsContainer.classList.remove('hidden');
+            } else {
+                maxSelectionsContainer.classList.add('hidden');
+            }
+        }
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const productDescription = document.getElementById('productDescription').value;
             const topK = parseInt(document.getElementById('topK').value);
+            const highPerformance = document.getElementById('highPerformance').checked;
+            const maxSelections = highPerformance ? parseInt(document.getElementById('maxSelections').value) : 3;
 
             // Reset UI
             error.classList.add('hidden');
@@ -141,13 +188,20 @@
             submitBtn.disabled = true;
 
             try {
+                const requestBody = {
+                    product_description: productDescription,
+                    top_k: topK,
+                    high_performance: highPerformance
+                };
+
+                if (highPerformance) {
+                    requestBody.max_selections = maxSelections;
+                }
+
                 const response = await fetch('/api/classify', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_description: productDescription,
-                        top_k: topK
-                    })
+                    body: JSON.stringify(requestBody)
                 });
 
                 if (!response.ok) {
@@ -175,13 +229,44 @@
 
             const confidencePercent = (conf) => (conf * 100).toFixed(1);
 
+            const isHighPerformance = data.paths_explored && data.paths_explored.length > 0;
+
             results.innerHTML = `
+                <!-- Mode Badge -->
+                ${isHighPerformance ? `
+                    <div class="mb-4 flex items-center gap-2">
+                        <span class="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full font-bold">
+                            🚀 HIGH PERFORMANCE MODE
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            Explored ${data.paths_explored.length} path(s) with chapter notes
+                        </span>
+                    </div>
+                ` : ''}
+
                 <!-- Final HS Code Highlight -->
                 <div class="bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg p-6 mb-6">
                     <p class="text-sm opacity-90 mb-1">Final HS Code</p>
                     <p class="text-4xl font-bold">${data.final_code}</p>
                     <p class="text-sm mt-2">Overall Confidence: ${confidencePercent(data.overall_confidence)}%</p>
                 </div>
+
+                <!-- High Performance Results -->
+                ${isHighPerformance && data.comparison_summary ? `
+                    <div class="border border-purple-200 rounded-lg p-4 mb-6 bg-purple-50">
+                        <h3 class="text-sm font-bold text-purple-900 mb-2">📋 Comparison Summary</h3>
+                        <p class="text-sm text-gray-700">${data.comparison_summary}</p>
+
+                        ${data.comparison_reasoning ? `
+                            <details class="mt-3">
+                                <summary class="cursor-pointer text-sm font-semibold text-purple-700 hover:text-purple-900">
+                                    View Detailed Reasoning (with Chapter Notes)
+                                </summary>
+                                <div class="mt-2 text-sm text-gray-700 bg-white p-3 rounded markdown-content" id="comparison-reasoning"></div>
+                            </details>
+                        ` : ''}
+                    </div>
+                ` : ''}
 
                 <!-- Hierarchical Path -->
                 <div class="space-y-4">
@@ -272,9 +357,32 @@
                     </div>
                 </div>
 
+                <!-- Explored Paths (High Performance Mode Only) -->
+                ${isHighPerformance && data.paths_explored && data.paths_explored.length > 1 ? `
+                    <details class="mt-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <summary class="cursor-pointer text-sm font-bold text-gray-700 hover:text-gray-900">
+                            🔍 View All Explored Paths (${data.paths_explored.length} total)
+                        </summary>
+                        <div class="mt-4 space-y-3">
+                            ${data.paths_explored.map((path, idx) => `
+                                <div class="bg-white rounded-lg p-3 border ${path.subheading_code === data.final_code ? 'border-purple-500 border-2' : 'border-gray-200'}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold text-gray-500">Path ${idx + 1}</span>
+                                        ${path.subheading_code === data.final_code ? '<span class="text-xs bg-purple-500 text-white px-2 py-1 rounded-full">✓ SELECTED</span>' : ''}
+                                    </div>
+                                    <p class="text-sm font-semibold text-gray-800">${path.chapter_code} → ${path.heading_code} → ${path.subheading_code}</p>
+                                    <p class="text-xs text-gray-600 mt-1">${path.subheading_description}</p>
+                                    <p class="text-xs text-gray-500 mt-1">Confidence: ${confidencePercent(path.path_confidence)}%</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
+
                 <!-- Metadata -->
                 <div class="mt-6 pt-4 border-t border-gray-200 text-sm text-gray-500">
                     <p>Processing Time: ${data.processing_time_ms.toFixed(0)}ms</p>
+                    ${isHighPerformance ? '<p class="mt-1">Mode: High Performance (Wide Net + Chapter Notes)</p>' : '<p class="mt-1">Mode: Standard (Fast One-Shot)</p>'}
                 </div>
             `;
 
@@ -285,6 +393,7 @@
                 const chapterReasoning = document.getElementById('chapter-reasoning');
                 const headingReasoning = document.getElementById('heading-reasoning');
                 const subheadingReasoning = document.getElementById('subheading-reasoning');
+                const comparisonReasoning = document.getElementById('comparison-reasoning');
 
                 if (chapterReasoning) {
                     chapterReasoning.innerHTML = marked.parse(data.chapter.reasoning);
@@ -294,6 +403,9 @@
                 }
                 if (subheadingReasoning) {
                     subheadingReasoning.innerHTML = marked.parse(data.subheading.reasoning);
+                }
+                if (comparisonReasoning && data.comparison_reasoning) {
+                    comparisonReasoning.innerHTML = marked.parse(data.comparison_reasoning);
                 }
             }, 0);
         }

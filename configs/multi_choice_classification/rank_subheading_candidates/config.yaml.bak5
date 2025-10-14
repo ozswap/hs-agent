@@ -1,0 +1,34 @@
+model:
+  name: gemini-2.5-flash
+  parameters:
+    temperature: 0.1
+    max_tokens: 8192
+    top_p: 0.95
+    thinking_budget: 0
+
+prompts:
+  system: prompts/system.md
+  user: prompts/user.md
+
+output_schema:
+  RankingOutput:
+    ranked_candidates:
+      type: "List[RankedCandidate]"
+      description: "Array of ranked subheading candidates"
+    justification:
+      type: "str"
+      description: "Overall justification for the ranking strategy"
+
+  RankedCandidate:
+    code:
+      type: "str"
+      description: "HS code"
+    description:
+      type: "str"
+      description: "HS code description"
+    relevance_score:
+      type: "float"
+      description: "Relevance score between 0.0 and 1.0"
+    justification:
+      type: "str"
+      description: "Clear, concise justification for this candidate's ranking"

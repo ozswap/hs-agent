@@ -7,9 +7,6 @@ from langgraph.graph import StateGraph, START, END
 
 from hs_agent.models import (
     ClassificationLevel,
-    RankingOutput,
-    SelectionOutput,
-    MultiSelectionOutput,
     ClassificationResult,
     ClassificationResponse,
     MultiChoiceClassificationResponse,
@@ -19,18 +16,33 @@ from hs_agent.graph_models import ClassificationState, MultiChoiceState
 from hs_agent.config.settings import settings
 from hs_agent.data_loader import HSDataLoader
 from hs_agent.config_loader import load_workflow_configs, get_prompt, get_model_params
+from hs_agent.utils.logger import get_logger
+
+# Get centralized logger
+logger = get_logger("hs_agent.agent")
 
 
 class HSAgent:
     """HS classification agent using LangGraph with Langfuse tracking."""
 
-    def __init__(self, data_loader: HSDataLoader, model_name: Optional[str] = None):
+    # Class-level constants to follow DRY principle
+    LEVEL_NAMES = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
+
+    def __init__(
+        self,
+        data_loader: HSDataLoader,
+        model_name: Optional[str] = None,
+        workflow_name: str = "wide_net_classification"
+    ):
         self.data_loader = data_loader
         self.model_name = model_name or settings.default_model_name
+        self.workflow_name = workflow_name
 
         # Load workflow configs from files
-        print("Loading workflow configs...")
-        self.configs = load_workflow_configs()
+        logger.step_start("Loading workflow configs", f"'{workflow_name}'")
+        from pathlib import Path
+        workflow_path = Path(f"configs/{workflow_name}")
+        self.configs = load_workflow_configs(workflow_path)
 
         # Initialize Langfuse if enabled (SDK v3)
         self.langfuse_handler = None
@@ -48,20 +60,61 @@ class HSAgent:
 
                 # Create callback handler (no constructor args in v3)
                 self.langfuse_handler = CallbackHandler()
-                print(f"✅ Langfuse tracking enabled (SDK v3)")
+                logger.init_complete("Langfuse tracking", "SDK v3")
             except Exception as e:
-                print(f"⚠️  Langfuse initialization failed: {e}")
+                logger.warning(f"⚠️  Langfuse initialization failed: {e}")
 
         # Build LangGraphs
         self.graph = self._build_graph()
         self.multi_graph = self._build_multi_graph()
+
+    # === DRY UTILITY METHODS ===
+    
+    def _get_level_name(self, level: ClassificationLevel) -> str:
+        """Get human-readable level name. Follows DRY principle."""
+        return self.LEVEL_NAMES[level.value]
+    
+    def _prepare_candidate_summaries(self, candidates: List[Dict]) -> tuple[str, str]:
+        """Prepare candidate summaries for prompts. Follows DRY principle."""
+        ranked_candidates_summary = ", ".join([c['code'] for c in candidates[:5]])
+        ranked_candidates_detailed = "\n".join([
+            f"{i+1}. Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
+            for i, c in enumerate(candidates)
+        ])
+        return ranked_candidates_summary, ranked_candidates_detailed
+    
+    def _build_base_template_vars(
+        self,
+        product_description: str,
+        candidates: List[Dict],
+        level: ClassificationLevel,
+        parent_code: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Build base template variables. Follows DRY principle."""
+        ranked_candidates_summary, ranked_candidates_detailed = self._prepare_candidate_summaries(candidates)
+        
+        template_vars = {
+            "product_description": product_description,
+            "ranked_candidates_summary": ranked_candidates_summary,
+            "ranked_candidates_detailed": ranked_candidates_detailed,
+            "level": self._get_level_name(level)
+        }
+        
+        # Add parent context based on level
+        if parent_code:
+            if level == ClassificationLevel.HEADING:
+                template_vars["parent_chapter"] = parent_code
+            elif level == ClassificationLevel.SUBHEADING:
+                template_vars["parent_heading"] = parent_code
+                
+        return template_vars
 
     def _get_model_for_config(self, config_name: str, output_schema: Optional[type] = None) -> Any:
         """Create a ChatVertexAI model configured for a specific workflow step.
 
         Args:
             config_name: Name of the config to use (e.g., 'rank_chapter_candidates')
-            output_schema: Optional Pydantic model for structured output
+            output_schema: Optional Pydantic model for structured output (fallback if no dynamic model)
 
         Returns:
             ChatVertexAI model, optionally with structured output
@@ -72,22 +125,25 @@ class HSAgent:
 
         # Build model kwargs with config-specific parameters or defaults
         model_kwargs = {
-            "model": self.model_name,
+            "model": model_params.get("model_name", self.model_name),
             "temperature": model_params.get("temperature", 0.1),
             "max_tokens": model_params.get("max_tokens", 8192),
             "top_p": model_params.get("top_p", 0.95),
         }
 
-        # Add thinking_budget if present (only supported in Gemini 2.5+ models)
-        if model_params.get("thinking_budget") is not None:
-            model_kwargs["thinking_budget"] = model_params["thinking_budget"]
+        # Add thinking_budget and include_thoughts if thinking is enabled (only supported in Gemini 2.5+ models)
+        # Note: include_thoughts can only be used when thinking_budget is set to a positive value
+        thinking_budget = model_params.get("thinking_budget")
+        if thinking_budget is not None and thinking_budget > 0:
+            model_kwargs["thinking_budget"] = thinking_budget
+            model_kwargs["include_thoughts"] = True
 
         # Create base model
         model = ChatVertexAI(**model_kwargs)
 
-        # Add structured output if requested
-        if output_schema:
-            model = model.with_structured_output(output_schema)
+        # Use JSON Schema directly from config
+        if json_schema := config.get("output_schema"):
+            model = model.with_structured_output(json_schema)
 
         return model
 
@@ -192,11 +248,13 @@ class HSAgent:
 
     async def _select_heading(self, state: ClassificationState) -> ClassificationState:
         """Select best heading."""
+        chapter_code = state["chapter_result"].selected_code
         result = await self._select_code(
             state["product_description"],
             state["heading_candidates"],
             ClassificationLevel.HEADING,
-            config_name="select_heading_candidates"
+            config_name="select_heading_candidates",
+            parent_code=chapter_code
         )
         return {**state, "heading_result": result}
 
@@ -215,11 +273,13 @@ class HSAgent:
 
     async def _select_subheading(self, state: ClassificationState) -> ClassificationState:
         """Select best subheading."""
+        heading_code = state["heading_result"].selected_code
         result = await self._select_code(
             state["product_description"],
             state["subheading_candidates"],
             ClassificationLevel.SUBHEADING,
-            config_name="select_subheading_candidates"
+            config_name="select_subheading_candidates",
+            parent_code=heading_code
         )
         return {**state, "subheading_result": result}
 
@@ -282,56 +342,43 @@ Rank top {top_k} most relevant codes."""
 
         try:
             # Get config-specific model for this ranking step
-            ranking_model = self._get_model_for_config(config_name, RankingOutput)
+            ranking_model = self._get_model_for_config(config_name)
 
             result = await ranking_model.ainvoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt)
             ])
 
-            # Convert to dict format
+            # Convert to dict format, adding description from our data 
             return [
-                {"code": c.code, "description": c.description, "relevance_score": c.relevance_score}
-                for c in result.ranked_candidates if c.code in codes_dict
-            ][:top_k]
+                {"code": c["code"], "description": codes_dict[c["code"]].description, "relevance_score": c["relevance_score"]}
+                for c in result["ranked_candidates"] if c["code"] in codes_dict
+            ]
 
         except Exception as e:
-            print(f"Ranking failed: {e}, using fallback")
-            return [
-                {"code": code, "description": hs.description, "relevance_score": max(0.1, 0.8 - i * 0.1)}
-                for i, (code, hs) in enumerate(list(codes_dict.items())[:top_k])
-            ]
+            logger.error(f"❌ Ranking failed: {e}")
+            raise RuntimeError(f"Ranking failed for config '{config_name}': {e}") from e
 
     async def _select_code(
         self,
         product_description: str,
         candidates: List[Dict],
         level: ClassificationLevel,
-        config_name: str = "select_chapter_candidates"
+        config_name: str = "select_chapter_candidates",
+        parent_code: Optional[str] = None
     ) -> ClassificationResult:
         """Select best code from candidates using config prompts."""
-        level_names = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
-
-        # Prepare candidate summaries
-        ranked_candidates_summary = ", ".join([c['code'] for c in candidates[:5]])
-        ranked_candidates_detailed = "\n".join([
-            f"{i+1}. Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
-            for i, c in enumerate(candidates)
-        ])
-
+        
         # Use prompts from config if available
         config = self.configs.get(config_name, {})
 
         system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
 Select the BEST code. Provide confidence (0.0-1.0) and reasoning."""
 
-        user_prompt = get_prompt(
-            config, "user",
-            product_description=product_description,
-            ranked_candidates_summary=ranked_candidates_summary,
-            ranked_candidates_detailed=ranked_candidates_detailed,
-            level=level_names[level.value]
-        ) or f"""Product: "{product_description}"
+        # Build template variables using DRY utility method
+        template_vars = self._build_base_template_vars(product_description, candidates, level, parent_code)
+
+        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
 Level: {level_names[level.value]}
 
 Candidates:
@@ -341,7 +388,7 @@ Select the most accurate code."""
 
         try:
             # Get config-specific model for this selection step
-            selection_model = self._get_model_for_config(config_name, SelectionOutput)
+            selection_model = self._get_model_for_config(config_name)
 
             result = await selection_model.ainvoke([
                 SystemMessage(content=system_prompt),
@@ -351,38 +398,28 @@ Select the most accurate code."""
             if result is None:
                 raise ValueError("LLM returned None")
 
-            # Find the description for the selected code
-            selected_description = next(
-                (c['description'] for c in candidates if c['code'] == result.selected_code),
-                "Description not found"
+            # Validate that selected code is in candidates
+            selected_candidate = next(
+                (c for c in candidates if c['code'] == result["selected_code"]),
+                None
             )
+
+            if selected_candidate is None:
+                # LLM returned invalid code - this should not happen with proper schemas
+                candidate_codes = [c['code'] for c in candidates]
+                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in candidates: {candidate_codes}")
 
             return ClassificationResult(
                 level=level,
-                selected_code=result.selected_code,
-                description=selected_description,
-                confidence=result.confidence,
-                reasoning=result.reasoning
+                selected_code=result["selected_code"],
+                description=selected_candidate['description'],
+                confidence=result["confidence"],
+                reasoning=result["reasoning"]
             )
 
         except Exception as e:
-            print(f"Selection failed: {e}, using fallback")
-            if candidates:
-                return ClassificationResult(
-                    level=level,
-                    selected_code=candidates[0]["code"],
-                    description=candidates[0].get("description", "Description not found"),
-                    confidence=0.5,
-                    reasoning=f"Fallback: {e}"
-                )
-            else:
-                return ClassificationResult(
-                    level=level,
-                    selected_code="000000",
-                    description="Unknown code",
-                    confidence=0.0,
-                    reasoning=f"No candidates: {e}"
-                )
+            logger.error(f"❌ Selection failed for config '{config_name}': {e}")
+            raise RuntimeError(f"Selection failed for config '{config_name}': {e}") from e
 
     # ========== Multi-Choice Classification ==========
 
@@ -398,6 +435,7 @@ Select the most accurate code."""
         workflow.add_node("rank_subheadings", self._multi_rank_subheadings)
         workflow.add_node("select_subheadings", self._multi_select_subheadings)
         workflow.add_node("build_paths", self._multi_build_paths)
+        workflow.add_node("compare_final_codes", self._compare_final_codes)
 
         # Define edges
         workflow.add_edge(START, "rank_chapters")
@@ -407,7 +445,8 @@ Select the most accurate code."""
         workflow.add_edge("select_headings", "rank_subheadings")
         workflow.add_edge("rank_subheadings", "select_subheadings")
         workflow.add_edge("select_subheadings", "build_paths")
-        workflow.add_edge("build_paths", END)
+        workflow.add_edge("build_paths", "compare_final_codes")
+        workflow.add_edge("compare_final_codes", END)
 
         return workflow.compile()
 
@@ -434,7 +473,11 @@ Select the most accurate code."""
             "subheading_confidences_by_heading": None,
             "subheading_reasonings_by_heading": None,
             "paths": None,
-            "overall_strategy": None
+            "overall_strategy": None,
+            "final_selected_code": None,
+            "final_confidence": None,
+            "final_reasoning": None,
+            "comparison_summary": None
         }
 
         # Prepare config with Langfuse callbacks
@@ -451,7 +494,11 @@ Select the most accurate code."""
             product_description=product_description,
             paths=final_state["paths"],
             overall_strategy=final_state["overall_strategy"],
-            processing_time_ms=processing_time
+            processing_time_ms=processing_time,
+            final_selected_code=final_state["final_selected_code"],
+            final_confidence=final_state["final_confidence"],
+            final_reasoning=final_state["final_reasoning"],
+            comparison_summary=final_state["comparison_summary"]
         )
 
     # ========== Multi-Choice Graph Nodes ==========
@@ -460,7 +507,7 @@ Select the most accurate code."""
         """Rank chapter candidates."""
         ranked = await self._rank_codes(
             state["product_description"],
-            self.data_loader.codes_2digit,
+            self.data_loader.codes_2digit,  # Use ALL chapters as intended
             state["top_k"],
             "rank_chapter_candidates"
         )
@@ -615,6 +662,119 @@ Select the most accurate code."""
 
         return {**state, "paths": top_paths, "overall_strategy": overall_strategy}
 
+    def _load_chapter_notes(self, chapter_codes: List[str]) -> str:
+        """Load chapter notes for given chapter codes.
+
+        Args:
+            chapter_codes: List of 2-digit chapter codes (e.g., ['85', '92'])
+
+        Returns:
+            Formatted string with chapter notes
+        """
+        from pathlib import Path
+
+        notes_dir = Path("data/chapters_markdown")
+        if not notes_dir.exists():
+            return "Chapter notes not available."
+
+        chapter_notes = []
+        for chapter_code in sorted(set(chapter_codes)):  # Remove duplicates and sort
+            # Format: chapter_01_notes.md, chapter_85_notes.md, etc.
+            notes_file = notes_dir / f"chapter_{chapter_code}_notes.md"
+
+            if notes_file.exists():
+                try:
+                    with open(notes_file, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                        chapter_notes.append(f"═══ CHAPTER {chapter_code} NOTES ═══\n{content}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to load notes for chapter {chapter_code}: {e}")
+            else:
+                logger.debug(f"Notes file not found for chapter {chapter_code}")
+
+        if not chapter_notes:
+            return "No chapter notes available for the chapters in these paths."
+
+        return "\n\n".join(chapter_notes)
+
+    async def _compare_final_codes(self, state: MultiChoiceState) -> MultiChoiceState:
+        """Compare all paths and select the single best HS code."""
+        paths = state["paths"]
+        product_description = state["product_description"]
+
+        # Extract unique chapter codes from all paths
+        chapter_codes = list(set(path.chapter_code for path in paths))
+
+        # Load chapter notes for all chapters present in paths
+        chapter_notes = self._load_chapter_notes(chapter_codes)
+
+        # Format paths for comparison
+        classification_paths = "\n\n".join([
+            f"PATH {i+1} (Confidence: {path.path_confidence:.2f}):\n"
+            f"  Final HS Code: {path.subheading_code}\n"
+            f"  Complete Path: {path.chapter_code} -> {path.heading_code} -> {path.subheading_code}\n"
+            f"  Chapter: {path.chapter_code} - {path.chapter_description}\n"
+            f"    Reasoning: {path.chapter_reasoning}\n"
+            f"  Heading: {path.heading_code} - {path.heading_description}\n"
+            f"    Reasoning: {path.heading_reasoning}\n"
+            f"  Subheading: {path.subheading_code} - {path.subheading_description}\n"
+            f"    Reasoning: {path.subheading_reasoning}\n"
+            for i, path in enumerate(paths)
+        ])
+
+        # Use prompts from config
+        config = self.configs.get("compare_final_codes", {})
+
+        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
+Compare all classification paths and select THE SINGLE BEST HS code."""
+
+        # Build template variables
+        template_vars = {
+            "product_description": product_description,
+            "classification_paths": classification_paths,
+            "path_count": len(paths),
+            "chapter_notes": chapter_notes
+        }
+
+        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
+
+Paths to compare:
+{classification_paths}
+
+Chapter Notes (IMPORTANT - these contain precedence rules and exclusions):
+{chapter_notes}
+
+Select the SINGLE BEST HS code from these {len(paths)} paths."""
+
+        try:
+            # Get config-specific model for comparison
+            comparison_model = self._get_model_for_config("compare_final_codes")
+
+            result = await comparison_model.ainvoke([
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ])
+
+            if result is None:
+                raise ValueError("LLM returned None")
+
+            # Validate that selected code is in one of the paths
+            path_codes = {path.subheading_code for path in paths}
+            if result["selected_code"] not in path_codes:
+                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in available paths: {list(path_codes)}")
+
+            return {
+                **state,
+                "final_selected_code": result["selected_code"],
+                "final_confidence": result["confidence"],
+                "final_reasoning": result["reasoning"],
+                "comparison_summary": result["comparison_summary"]
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Comparison failed: {e}")
+            raise RuntimeError(f"Final code comparison failed: {e}") from e
+
     async def _multi_select_codes(
         self,
         product_description: str,
@@ -625,36 +785,16 @@ Select the most accurate code."""
         parent_code: Optional[str] = None
     ) -> Dict[str, Any]:
         """Select 1-N codes from candidates using multi-selection."""
-        level_names = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
-
-        # Prepare candidate summaries
-        ranked_candidates_summary = ", ".join([c['code'] for c in candidates[:5]])
-        ranked_candidates_detailed = "\n".join([
-            f"{i+1}. Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
-            for i, c in enumerate(candidates)
-        ])
-
+        
         # Get config
         config = self.configs.get(config_name, {})
 
         system_prompt = get_prompt(config, "system") or f"""You are an HS code classification expert.
 Select 1-{max_selections} BEST codes. Provide confidence (0.0-1.0) for each and overall reasoning."""
 
-        # Build template variables
-        template_vars = {
-            "product_description": product_description,
-            "ranked_candidates_summary": ranked_candidates_summary,
-            "ranked_candidates_detailed": ranked_candidates_detailed,
-            "level": level_names[level.value],
-            "max_selections": max_selections
-        }
-
-        # Add parent context based on level (not config name to avoid substring matches)
-        if parent_code:
-            if level == ClassificationLevel.HEADING:
-                template_vars["parent_chapter"] = parent_code
-            elif level == ClassificationLevel.SUBHEADING:
-                template_vars["parent_heading"] = parent_code
+        # Build template variables using DRY utility method
+        template_vars = self._build_base_template_vars(product_description, candidates, level, parent_code)
+        template_vars["max_selections"] = max_selections  # Add multi-selection specific variable
 
         user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
 Level: {level_names[level.value]}
@@ -667,7 +807,37 @@ Select 1-{max_selections} most accurate codes."""
 
         try:
             # Get config-specific model for this multi-selection step
-            multi_selection_model = self._get_model_for_config(config_name, MultiSelectionOutput)
+            config = self.configs.get(config_name, {})
+            
+            # Get base model
+            model_params = get_model_params(config)
+            model_kwargs = {
+                "model": model_params.get("model_name", self.model_name),
+                "temperature": model_params.get("temperature", 0.1),
+                "max_tokens": model_params.get("max_tokens", 8192),
+                "top_p": model_params.get("top_p", 0.95),
+            }
+            thinking_budget = model_params.get("thinking_budget")
+            if thinking_budget is not None and thinking_budget > 0:
+                model_kwargs["thinking_budget"] = thinking_budget
+                model_kwargs["include_thoughts"] = True
+                
+            base_model = ChatVertexAI(**model_kwargs)
+            
+            # Add enum constraints for selection schemas
+            if (json_schema := config.get("output_schema")) and "select" in config_name:
+                # Add enum constraint inline
+                schema = json_schema.copy()
+                candidate_codes = [c["code"] for c in candidates]
+                if "properties" in schema and "selected_codes" in schema["properties"]:
+                    if "items" not in schema["properties"]["selected_codes"]:
+                        schema["properties"]["selected_codes"]["items"] = {}
+                    schema["properties"]["selected_codes"]["items"]["enum"] = candidate_codes
+                multi_selection_model = base_model.with_structured_output(schema)
+            elif json_schema:
+                multi_selection_model = base_model.with_structured_output(json_schema)
+            else:
+                multi_selection_model = base_model
 
             result = await multi_selection_model.ainvoke([
                 SystemMessage(content=system_prompt),
@@ -677,24 +847,30 @@ Select 1-{max_selections} most accurate codes."""
             if result is None:
                 raise ValueError("LLM returned None")
 
+            # Validate that all selected codes are in candidates
+            candidate_codes = {c['code'] for c in candidates}
+            valid_codes = []
+            valid_confidences = []
+
+            for i, code in enumerate(result["selected_codes"]):
+                if code in candidate_codes:
+                    valid_codes.append(code)
+                    valid_confidences.append(result["individual_confidences"][i])
+                else:
+                    logger.warning(f"⚠️  LLM selected invalid code '{code}' not in candidates, skipping")
+
+            # If no valid codes, raise error instead of fallback
+            if not valid_codes:
+                raise ValueError(f"No valid codes selected from candidates. LLM selected: {result['selected_codes']}, Available: {list(candidate_codes)}")
+            
+            reasoning = result["reasoning"]
+
             return {
-                "codes": result.selected_codes,
-                "confidences": result.individual_confidences,
-                "reasonings": [result.reasoning] * len(result.selected_codes)  # Same reasoning for all
+                "codes": valid_codes,
+                "confidences": valid_confidences,
+                "reasonings": [reasoning] * len(valid_codes)
             }
 
         except Exception as e:
-            print(f"Multi-selection failed: {e}, using fallback")
-            if candidates:
-                # Fallback: select top candidate
-                return {
-                    "codes": [candidates[0]["code"]],
-                    "confidences": [0.5],
-                    "reasonings": [f"Fallback: {e}"]
-                }
-            else:
-                return {
-                    "codes": ["000000"],
-                    "confidences": [0.0],
-                    "reasonings": [f"No candidates: {e}"]
-                }
+            logger.error(f"❌ Multi-selection failed for config '{config_name}': {e}")
+            raise RuntimeError(f"Multi-selection failed for config '{config_name}': {e}") from e
