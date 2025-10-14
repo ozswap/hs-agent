@@ -73,7 +73,7 @@ def load_workflow_configs(base_dir: Path = Path("configs/multi_choice_classifica
     """Load all workflow config folders into a single dict.
 
     Returns:
-        Dict where keys are folder names (e.g., 'rank_chapter_candidates')
+        Dict where keys are folder names (e.g., 'select_chapter_candidates')
         and values are the loaded config dicts.
     """
     configs = {}

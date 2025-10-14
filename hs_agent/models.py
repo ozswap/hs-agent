@@ -66,12 +66,6 @@ class ClassificationRequest(BaseModel):
     Returns a single HS code path.
     """
     product_description: str
-    top_k: int = Field(
-        default=10,
-        description="Number of top candidates to consider during ranking phase (performance optimization)",
-        ge=1,
-        le=50
-    )
     high_performance: bool = Field(
         default=False,
         description="Use wide net approach: explores multiple paths and applies chapter notes for highest accuracy (slower but more accurate)"
@@ -90,15 +84,9 @@ class MultiChoiceClassificationRequest(BaseModel):
     Returns 1-N HS code paths for ambiguous products.
     """
     product_description: str
-    top_k: int = Field(
-        default=10,
-        description="Number of top candidates to RANK at each level (e.g., rank top 10 from all chapters)",
-        ge=1,
-        le=50
-    )
     max_selections: int = Field(
         default=3,
-        description="Maximum codes to SELECT from ranked candidates at each level (e.g., select best 1-3 from top 10)",
+        description="Maximum codes to SELECT at each level (e.g., select best 1-3 codes)",
         ge=1,
         le=10
     )

@@ -24,10 +24,26 @@ output_schema:
       description: "Confidence for each selected code"
       items:
         type: "number"
+    ranked_candidates:
+      type: "array"
+      description: "All evaluated candidates ranked by relevance"
+      items:
+        type: "object"
+        properties:
+          code:
+            type: "string"
+            description: "HS code"
+          relevance_score:
+            type: "number"
+            description: "Relevance score between 0.0 and 1.0"
+          reasoning:
+            type: "string"
+            description: "Brief reasoning (max 25 words)"
+        required: ["code", "relevance_score", "reasoning"]
     overall_confidence:
       type: "number"
       description: "Overall confidence in the selection set"
     reasoning:
       type: "string"
       description: "Detailed reasoning for the selections"
-  required: ["selected_codes", "individual_confidences", "overall_confidence", "reasoning"]
+  required: ["selected_codes", "individual_confidences", "ranked_candidates", "overall_confidence", "reasoning"]

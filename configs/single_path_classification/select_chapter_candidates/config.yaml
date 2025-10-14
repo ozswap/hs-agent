@@ -12,7 +12,6 @@ prompts:
 output_schema:
   title: "SelectionOutput"
   description: "prompts/output_schema.md"
-  description: "prompts/output_schema.md"
   type: "object" 
   properties:
     selected_code:

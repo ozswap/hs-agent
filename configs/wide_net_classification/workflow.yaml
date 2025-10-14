@@ -29,47 +29,29 @@ overview: |
 # Workflow Steps
 steps:
   - step: 1
-    name: "rank_chapter_candidates"
-    type: "ranking"
-    level: "chapter"
-    description: "Rank all 2-digit chapter codes by relevance"
-
-  - step: 2
     name: "select_chapter_candidates"
     type: "multi_selection"
     level: "chapter"
-    description: "Select 1-N best chapters (maximize exploration early)"
+    description: "Evaluate all chapters and select 1-N best (maximize exploration early)"
 
-  - step: 3
-    name: "rank_heading_candidates"
-    type: "ranking"
-    level: "heading"
-    description: "For each selected chapter, rank 4-digit heading codes"
-
-  - step: 4
+  - step: 2
     name: "select_heading_candidates"
     type: "multi_selection"
     level: "heading"
-    description: "Select 1-N best headings per chapter (balance breadth)"
+    description: "Evaluate all headings per chapter and select 1-N best (balance breadth)"
 
-  - step: 5
-    name: "rank_subheading_candidates"
-    type: "ranking"
-    level: "subheading"
-    description: "For each selected heading, rank 6-digit subheading codes"
-
-  - step: 6
+  - step: 3
     name: "select_subheading_candidates"
     type: "multi_selection"
     level: "subheading"
-    description: "Select 1-N best subheadings per heading (specialize)"
+    description: "Evaluate all subheadings per heading and select 1-N best (specialize)"
 
-  - step: 7
+  - step: 4
     name: "build_paths"
     type: "path_construction"
     description: "Construct all complete classification paths from selections"
 
-  - step: 8
+  - step: 5
     name: "compare_final_codes"
     type: "final_comparison"
     description: "Compare all paths and select THE SINGLE BEST HS code"
@@ -83,7 +65,6 @@ strategy:
 
 # Default Parameters
 defaults:
-  top_k: 10                    # Number of candidates to rank at each level
   max_selections: 3            # Maximum selections per level
   max_output_paths: 10         # Maximum paths to return before comparison
   enable_comparison: true      # Always perform final comparison

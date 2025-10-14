@@ -1,15 +1,22 @@
 ## MultiSelectionOutput Schema
 
-This structure contains the final 1-3 selected HS code candidates with detailed reasoning and selection strategy.
+This structure contains both the comprehensive ranking of all candidates AND the final 1-N selected HS codes.
 
 ### Output Format
-Return a JSON object with selected candidates and selection methodology.
+Return a JSON object with ranked candidates, selected codes, and detailed reasoning.
 
 ### Key Requirements:
-1. **selected_codes**: 1-3 best candidates (adaptive based on confidence)
-2. **individual_confidences**: Confidence for each selected code
-3. **overall_confidence**: Overall confidence in the selection set
-4. **reasoning**: Detailed justification for each selection
+1. **selected_codes**: 1-N best candidates to explore further (adaptive based on confidence)
+2. **individual_confidences**: Confidence score (0.0-1.0) for each selected code
+3. **ranked_candidates**: ALL evaluated candidates with relevance scores and brief reasoning
+4. **overall_confidence**: Overall confidence in the selection set
+5. **reasoning**: Detailed justification for the selections
+
+### Ranking Guidelines:
+For each candidate in ranked_candidates:
+- **code**: The HS code
+- **relevance_score**: Score from 0.0 to 1.0 indicating relevance
+- **reasoning**: Brief explanation (max 25 words) for the relevance score
 
 ### Selection Guidelines:
 - **High confidence (>0.8)**: Select 1-2 candidates

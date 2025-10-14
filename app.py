@@ -105,7 +105,6 @@ async def classify_product(request: ClassificationRequest):
     - Slower but more accurate for complex/ambiguous products
 
     Parameters:
-    - top_k: Number of top candidates to rank at each level (default: 10)
     - high_performance: Enable wide net approach with chapter notes (default: False)
     - max_selections: Only for high_performance mode - paths to explore (default: 3)
     """
@@ -114,12 +113,11 @@ async def classify_product(request: ClassificationRequest):
             # High performance mode: use wide net approach
             agent = get_agent(use_wide_net=True)
 
-            logger.info(f"🎯 [bold]High Performance Mode:[/bold] [cyan]{request.product_description}[/cyan] [dim](top_k={request.top_k}, paths={request.max_selections})[/dim]")
+            logger.info(f"🎯 [bold]High Performance Mode:[/bold] [cyan]{request.product_description}[/cyan] [dim](paths={request.max_selections})[/dim]")
 
             # Use multi classification with comparison
             multi_result = await agent.classify_multi(
                 product_description=request.product_description,
-                top_k=request.top_k,
                 max_selections=request.max_selections
             )
 
@@ -163,10 +161,9 @@ async def classify_product(request: ClassificationRequest):
             # Standard mode: one-shot classification
             agent = get_agent(use_wide_net=False)
 
-            logger.classify_start(request.product_description, {"top_k": request.top_k, "mode": "standard"})
+            logger.classify_start(request.product_description, {"mode": "standard"})
             result = await agent.classify(
-                product_description=request.product_description,
-                top_k=request.top_k
+                product_description=request.product_description
             )
 
             logger.classify_result(result.final_code, result.overall_confidence)
@@ -184,13 +181,12 @@ async def classify_product_multi(request: MultiChoiceClassificationRequest):
     Returns 1-N possible HS code paths showing different classification interpretations.
 
     Parameters:
-    - top_k: Number of top candidates to rank at each level (default: 10)
     - max_selections: Number of codes to select at each level (default: 3)
 
-    Example with top_k=10, max_selections=3:
-    - Ranks all chapters, selects best 1-3
-    - For each chapter, ranks headings, selects best 1-3
-    - For each heading, ranks subheadings, selects best 1-3
+    Example with max_selections=3:
+    - Evaluates all chapters, selects best 1-3
+    - For each chapter, evaluates headings, selects best 1-3
+    - For each heading, evaluates subheadings, selects best 1-3
     - Explores up to 27 possible paths
     """
     try:
@@ -212,10 +208,9 @@ async def classify_product_multi(request: MultiChoiceClassificationRequest):
         
         agent = _agent_multi_choice
 
-        logger.info(f"🔀 [bold]Multi-Choice Classification:[/bold] [cyan]{request.product_description}[/cyan] [dim](top_k={request.top_k}, max_selections={request.max_selections})[/dim]")
+        logger.info(f"🔀 [bold]Multi-Choice Classification:[/bold] [cyan]{request.product_description}[/cyan] [dim](max_selections={request.max_selections})[/dim]")
         result = await agent.classify_multi(
             product_description=request.product_description,
-            top_k=request.top_k,
             max_selections=request.max_selections
         )
 

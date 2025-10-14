@@ -67,8 +67,7 @@ def print_multi_result(result):
 
 @app.command()
 def classify(
-    product_description: str = typer.Argument(..., help="Product description to classify"),
-    top_k: int = typer.Option(10, "--top-k", "-k", help="Number of candidates to consider at each level")
+    product_description: str = typer.Argument(..., help="Product description to classify")
 ):
     """
     Classify a product description to a single HS code (one-to-one).
@@ -85,7 +84,7 @@ def classify(
         console.print(f"\n[bold]Classifying:[/bold] {product_description}\n")
 
         with console.status("[bold yellow]Processing..."):
-            result = await agent.classify(product_description, top_k=top_k)
+            result = await agent.classify(product_description)
 
         print_single_result(result)
 
@@ -95,7 +94,6 @@ def classify(
 @app.command()
 def classify_multi(
     product_description: str = typer.Argument(..., help="Product description to classify"),
-    top_k: int = typer.Option(10, "--top-k", "-k", help="Number of candidates to consider at each level"),
     max_selections: int = typer.Option(3, "--max-selections", "-m", help="Maximum number of codes to select at each level (1 to N)")
 ):
     """
@@ -114,7 +112,7 @@ def classify_multi(
         console.print(f"[dim]Max selections per level: {max_selections}[/dim]\n")
 
         with console.status("[bold yellow]Processing multiple paths..."):
-            result = await agent.classify_multi(product_description, top_k=top_k, max_selections=max_selections)
+            result = await agent.classify_multi(product_description, max_selections=max_selections)
 
         print_multi_result(result)
 

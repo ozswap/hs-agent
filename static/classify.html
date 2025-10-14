@@ -69,22 +69,6 @@
                         <p class="text-xs text-gray-500 mt-1">Be as descriptive as possible for accurate classification</p>
                     </div>
 
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">
-                            Top K Candidates
-                            <span class="text-xs font-normal text-gray-500">(Performance optimization)</span>
-                        </label>
-                        <input
-                            type="number"
-                            id="topK"
-                            value="10"
-                            min="1"
-                            max="50"
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                        />
-                        <p class="text-xs text-gray-500 mt-1">Number of candidates to consider during ranking (default: 10)</p>
-                    </div>
-
                     <!-- High Performance Mode Toggle -->
                     <div class="border border-purple-200 rounded-lg p-4 bg-purple-50">
                         <div class="flex items-center justify-between mb-2">
@@ -177,7 +161,6 @@
             e.preventDefault();
 
             const productDescription = document.getElementById('productDescription').value;
-            const topK = parseInt(document.getElementById('topK').value);
             const highPerformance = document.getElementById('highPerformance').checked;
             const maxSelections = highPerformance ? parseInt(document.getElementById('maxSelections').value) : 3;
 
@@ -190,7 +173,6 @@
             try {
                 const requestBody = {
                     product_description: productDescription,
-                    top_k: topK,
                     high_performance: highPerformance
                 };
 

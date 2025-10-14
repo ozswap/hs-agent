@@ -2,15 +2,18 @@ Product: "{product_description}"
 
 Parent Heading: {parent_heading}
 
-You've already ranked all the subheadings within this heading. Here's a summary of the top candidates:
-{ranked_candidates_summary}
+Here are all the available subheading codes within this heading:
+{candidates_list}
 
-Here are the detailed top ranked candidates:
-{ranked_candidates_detailed}
-
-Task: Select the single best subheading code from these ranked candidates.
+Task: Evaluate ALL subheadings for relevance and select the single best subheading code.
 
 This is the FINAL HS code classification - the definitive 6-digit code that will be used for international trade and customs. Consider the product's exact specifications, essential character, and intended use. Think about which code customs officials would most likely accept.
+
+For each subheading, consider:
+- The product's exact specifications, material composition, and essential character
+- How the subheading's description precisely matches the product
+- Trade classification practices and customs interpretations
+- Intended use and functional characteristics
 
 Provide:
 - The subheading code you're selecting (this is the final HS code)

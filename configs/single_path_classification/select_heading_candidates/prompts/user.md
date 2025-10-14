@@ -2,15 +2,17 @@ Product: "{product_description}"
 
 Parent Chapter: {parent_chapter}
 
-You've already ranked all the headings within this chapter. Here's a summary of the top candidates:
-{ranked_candidates_summary}
+Here are all the available heading codes within this chapter:
+{candidates_list}
 
-Here are the detailed top ranked candidates:
-{ranked_candidates_detailed}
-
-Task: Select the single best heading code from these ranked candidates.
+Task: Evaluate ALL headings for relevance and select the single best heading code.
 
 This narrows down the classification within the chapter. Consider which heading most precisely describes the product's essential character and function.
+
+For each heading, consider:
+- The product's material composition, function, and intended use
+- How the heading's description aligns with the product's essential character
+- Trade classification practices and customs interpretations
 
 Provide:
 - The heading code you're selecting

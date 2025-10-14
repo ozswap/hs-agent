@@ -73,41 +73,6 @@ class HSAgent:
     def _get_level_name(self, level: ClassificationLevel) -> str:
         """Get human-readable level name. Follows DRY principle."""
         return self.LEVEL_NAMES[level.value]
-    
-    def _prepare_candidate_summaries(self, candidates: List[Dict]) -> tuple[str, str]:
-        """Prepare candidate summaries for prompts. Follows DRY principle."""
-        ranked_candidates_summary = ", ".join([c['code'] for c in candidates[:5]])
-        ranked_candidates_detailed = "\n".join([
-            f"{i+1}. Code: {c['code']} | Score: {c['relevance_score']:.2f} | {c['description']}"
-            for i, c in enumerate(candidates)
-        ])
-        return ranked_candidates_summary, ranked_candidates_detailed
-    
-    def _build_base_template_vars(
-        self,
-        product_description: str,
-        candidates: List[Dict],
-        level: ClassificationLevel,
-        parent_code: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Build base template variables. Follows DRY principle."""
-        ranked_candidates_summary, ranked_candidates_detailed = self._prepare_candidate_summaries(candidates)
-        
-        template_vars = {
-            "product_description": product_description,
-            "ranked_candidates_summary": ranked_candidates_summary,
-            "ranked_candidates_detailed": ranked_candidates_detailed,
-            "level": self._get_level_name(level)
-        }
-        
-        # Add parent context based on level
-        if parent_code:
-            if level == ClassificationLevel.HEADING:
-                template_vars["parent_chapter"] = parent_code
-            elif level == ClassificationLevel.SUBHEADING:
-                template_vars["parent_heading"] = parent_code
-                
-        return template_vars
 
     def _get_model_for_config(self, config_name: str, output_schema: Optional[type] = None) -> Any:
         """Create a ChatVertexAI model configured for a specific workflow step.
@@ -151,28 +116,22 @@ class HSAgent:
         """Build the LangGraph for hierarchical classification."""
         workflow = StateGraph(ClassificationState)
 
-        # Add nodes for each step
-        workflow.add_node("rank_chapters", self._rank_chapters)
+        # Add nodes for each step (ranking and selection merged)
         workflow.add_node("select_chapter", self._select_chapter)
-        workflow.add_node("rank_headings", self._rank_headings)
         workflow.add_node("select_heading", self._select_heading)
-        workflow.add_node("rank_subheadings", self._rank_subheadings)
         workflow.add_node("select_subheading", self._select_subheading)
         workflow.add_node("finalize", self._finalize)
 
         # Define edges
-        workflow.add_edge(START, "rank_chapters")
-        workflow.add_edge("rank_chapters", "select_chapter")
-        workflow.add_edge("select_chapter", "rank_headings")
-        workflow.add_edge("rank_headings", "select_heading")
-        workflow.add_edge("select_heading", "rank_subheadings")
-        workflow.add_edge("rank_subheadings", "select_subheading")
+        workflow.add_edge(START, "select_chapter")
+        workflow.add_edge("select_chapter", "select_heading")
+        workflow.add_edge("select_heading", "select_subheading")
         workflow.add_edge("select_subheading", "finalize")
         workflow.add_edge("finalize", END)
 
         return workflow.compile()
 
-    async def classify(self, product_description: str, top_k: int = 10) -> ClassificationResponse:
+    async def classify(self, product_description: str) -> ClassificationResponse:
         """Classify a product using LangGraph with Langfuse tracking."""
         import time
         start = time.time()
@@ -180,12 +139,8 @@ class HSAgent:
         # Initial state
         initial_state: ClassificationState = {
             "product_description": product_description,
-            "top_k": top_k,
-            "chapter_candidates": None,
             "chapter_result": None,
-            "heading_candidates": None,
             "heading_result": None,
-            "subheading_candidates": None,
             "subheading_result": None,
             "final_code": None,
             "overall_confidence": None
@@ -213,70 +168,36 @@ class HSAgent:
 
     # ========== Graph Node Methods ==========
 
-    async def _rank_chapters(self, state: ClassificationState) -> ClassificationState:
-        """Rank chapter candidates."""
-        ranked = await self._rank_codes(
-            state["product_description"],
-            self.data_loader.codes_2digit,
-            state["top_k"],
-            config_name="rank_chapter_candidates"
-        )
-        return {**state, "chapter_candidates": ranked}
-
     async def _select_chapter(self, state: ClassificationState) -> ClassificationState:
-        """Select best chapter."""
+        """Evaluate all chapters and select the best one."""
         result = await self._select_code(
             state["product_description"],
-            state["chapter_candidates"],
+            self.data_loader.codes_2digit,
             ClassificationLevel.CHAPTER,
             config_name="select_chapter_candidates"
         )
         return {**state, "chapter_result": result}
 
-    async def _rank_headings(self, state: ClassificationState) -> ClassificationState:
-        """Rank heading candidates under selected chapter."""
+    async def _select_heading(self, state: ClassificationState) -> ClassificationState:
+        """Evaluate all headings under selected chapter and select the best one."""
         chapter_code = state["chapter_result"].selected_code
         codes = {c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)}
-        ranked = await self._rank_codes(
-            state["product_description"],
-            codes,
-            state["top_k"],
-            config_name="rank_heading_candidates",
-            parent_code=chapter_code
-        )
-        return {**state, "heading_candidates": ranked}
-
-    async def _select_heading(self, state: ClassificationState) -> ClassificationState:
-        """Select best heading."""
-        chapter_code = state["chapter_result"].selected_code
         result = await self._select_code(
             state["product_description"],
-            state["heading_candidates"],
+            codes,
             ClassificationLevel.HEADING,
             config_name="select_heading_candidates",
             parent_code=chapter_code
         )
         return {**state, "heading_result": result}
 
-    async def _rank_subheadings(self, state: ClassificationState) -> ClassificationState:
-        """Rank subheading candidates under selected heading."""
+    async def _select_subheading(self, state: ClassificationState) -> ClassificationState:
+        """Evaluate all subheadings under selected heading and select the best one."""
         heading_code = state["heading_result"].selected_code
         codes = {c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)}
-        ranked = await self._rank_codes(
-            state["product_description"],
-            codes,
-            state["top_k"],
-            config_name="rank_subheading_candidates",
-            parent_code=heading_code
-        )
-        return {**state, "subheading_candidates": ranked}
-
-    async def _select_subheading(self, state: ClassificationState) -> ClassificationState:
-        """Select best subheading."""
-        heading_code = state["heading_result"].selected_code
         result = await self._select_code(
             state["product_description"],
-            state["subheading_candidates"],
+            codes,
             ClassificationLevel.SUBHEADING,
             config_name="select_subheading_candidates",
             parent_code=heading_code
@@ -298,93 +219,48 @@ class HSAgent:
 
     # ========== Helper Methods ==========
 
-    async def _rank_codes(
-        self,
-        product_description: str,
-        codes_dict: Dict,
-        top_k: int,
-        config_name: str = "rank_chapter_candidates",
-        parent_code: Optional[str] = None
-    ) -> List[Dict]:
-        """Rank HS codes by relevance using config prompts."""
-        # Prepare candidates list
-        candidates_list = "\n".join([
-            f"{i+1}. {code}: {hs.description}"
-            for i, (code, hs) in enumerate(codes_dict.items())
-        ])
-
-        # Use prompts from config if available
-        config = self.configs.get(config_name, {})
-
-        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
-Rank candidates by relevance (0.0-1.0 score)."""
-
-        # Build template variables based on config type
-        template_vars = {
-            "product_description": product_description,
-            "candidates_list": candidates_list,
-            "context": "Hierarchical HS code classification"
-        }
-
-        # Add parent context variables based on config name (check more specific first)
-        if parent_code:
-            if "rank_subheading" in config_name:
-                template_vars["parent_heading"] = parent_code
-            elif "rank_heading" in config_name:
-                template_vars["parent_chapter_code"] = parent_code
-
-        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
-
-Codes:
-{candidates_list}
-
-Rank top {top_k} most relevant codes."""
-
-        try:
-            # Get config-specific model for this ranking step
-            ranking_model = self._get_model_for_config(config_name)
-
-            result = await ranking_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
-
-            # Convert to dict format, adding description from our data 
-            return [
-                {"code": c["code"], "description": codes_dict[c["code"]].description, "relevance_score": c["relevance_score"]}
-                for c in result["ranked_candidates"] if c["code"] in codes_dict
-            ]
-
-        except Exception as e:
-            logger.error(f"❌ Ranking failed: {e}")
-            raise RuntimeError(f"Ranking failed for config '{config_name}': {e}") from e
-
     async def _select_code(
         self,
         product_description: str,
-        candidates: List[Dict],
+        codes_dict: Dict,
         level: ClassificationLevel,
         config_name: str = "select_chapter_candidates",
         parent_code: Optional[str] = None
     ) -> ClassificationResult:
-        """Select best code from candidates using config prompts."""
+        """Evaluate all codes and select the best one using config prompts."""
+        
+        # Prepare candidates list from codes dict
+        candidates_list = "\n".join([
+            f"{code}: {hs.description}"
+            for code, hs in codes_dict.items()
+        ])
         
         # Use prompts from config if available
         config = self.configs.get(config_name, {})
 
         system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
-Select the BEST code. Provide confidence (0.0-1.0) and reasoning."""
+Evaluate all codes and select the BEST one. Provide confidence (0.0-1.0) and reasoning."""
 
-        # Build template variables using DRY utility method
-        template_vars = self._build_base_template_vars(product_description, candidates, level, parent_code)
+        # Build template variables
+        template_vars = {
+            "product_description": product_description,
+            "candidates_list": candidates_list,
+            "level": self._get_level_name(level)
+        }
+        
+        # Add parent context based on level
+        if parent_code:
+            if level == ClassificationLevel.HEADING:
+                template_vars["parent_chapter"] = parent_code
+            elif level == ClassificationLevel.SUBHEADING:
+                template_vars["parent_heading"] = parent_code
 
         user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
-Level: {level_names[level.value]}
 
 Candidates:
-{ranked_candidates_detailed}
+{candidates_list}
 
-Select the most accurate code."""
+Evaluate all codes and select the most accurate one."""
 
         try:
             # Get config-specific model for this selection step
@@ -398,21 +274,15 @@ Select the most accurate code."""
             if result is None:
                 raise ValueError("LLM returned None")
 
-            # Validate that selected code is in candidates
-            selected_candidate = next(
-                (c for c in candidates if c['code'] == result["selected_code"]),
-                None
-            )
-
-            if selected_candidate is None:
+            # Validate that selected code is in codes_dict
+            if result["selected_code"] not in codes_dict:
                 # LLM returned invalid code - this should not happen with proper schemas
-                candidate_codes = [c['code'] for c in candidates]
-                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in candidates: {candidate_codes}")
+                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in codes: {list(codes_dict.keys())}")
 
             return ClassificationResult(
                 level=level,
                 selected_code=result["selected_code"],
-                description=selected_candidate['description'],
+                description=codes_dict[result["selected_code"]].description,
                 confidence=result["confidence"],
                 reasoning=result["reasoning"]
             )
@@ -424,33 +294,27 @@ Select the most accurate code."""
     # ========== Multi-Choice Classification ==========
 
     def _build_multi_graph(self):
-        """Build the LangGraph for multi-choice classification (1-3 paths)."""
+        """Build the LangGraph for multi-choice classification (1-N paths)."""
         workflow = StateGraph(MultiChoiceState)
 
-        # Add nodes for multi-choice workflow
-        workflow.add_node("rank_chapters", self._multi_rank_chapters)
+        # Add nodes for multi-choice workflow (ranking and selection merged)
         workflow.add_node("select_chapters", self._multi_select_chapters)
-        workflow.add_node("rank_headings", self._multi_rank_headings)
         workflow.add_node("select_headings", self._multi_select_headings)
-        workflow.add_node("rank_subheadings", self._multi_rank_subheadings)
         workflow.add_node("select_subheadings", self._multi_select_subheadings)
         workflow.add_node("build_paths", self._multi_build_paths)
         workflow.add_node("compare_final_codes", self._compare_final_codes)
 
         # Define edges
-        workflow.add_edge(START, "rank_chapters")
-        workflow.add_edge("rank_chapters", "select_chapters")
-        workflow.add_edge("select_chapters", "rank_headings")
-        workflow.add_edge("rank_headings", "select_headings")
-        workflow.add_edge("select_headings", "rank_subheadings")
-        workflow.add_edge("rank_subheadings", "select_subheadings")
+        workflow.add_edge(START, "select_chapters")
+        workflow.add_edge("select_chapters", "select_headings")
+        workflow.add_edge("select_headings", "select_subheadings")
         workflow.add_edge("select_subheadings", "build_paths")
         workflow.add_edge("build_paths", "compare_final_codes")
         workflow.add_edge("compare_final_codes", END)
 
         return workflow.compile()
 
-    async def classify_multi(self, product_description: str, top_k: int = 10, max_selections: int = 3) -> MultiChoiceClassificationResponse:
+    async def classify_multi(self, product_description: str, max_selections: int = 3) -> MultiChoiceClassificationResponse:
         """Classify a product and return 1-N HS code paths."""
         import time
         start = time.time()
@@ -458,17 +322,13 @@ Select the most accurate code."""
         # Initial state
         initial_state: MultiChoiceState = {
             "product_description": product_description,
-            "top_k": top_k,
             "max_selections": max_selections,
-            "chapter_candidates": None,
             "selected_chapters": None,
             "chapter_confidences": None,
             "chapter_reasonings": None,
-            "heading_candidates_by_chapter": None,
             "selected_headings_by_chapter": None,
             "heading_confidences_by_chapter": None,
             "heading_reasonings_by_chapter": None,
-            "subheading_candidates_by_heading": None,
             "selected_subheadings_by_heading": None,
             "subheading_confidences_by_heading": None,
             "subheading_reasonings_by_heading": None,
@@ -503,21 +363,11 @@ Select the most accurate code."""
 
     # ========== Multi-Choice Graph Nodes ==========
 
-    async def _multi_rank_chapters(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Rank chapter candidates."""
-        ranked = await self._rank_codes(
-            state["product_description"],
-            self.data_loader.codes_2digit,  # Use ALL chapters as intended
-            state["top_k"],
-            "rank_chapter_candidates"
-        )
-        return {**state, "chapter_candidates": ranked}
-
     async def _multi_select_chapters(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Select 1-N best chapters."""
+        """Evaluate all chapters and select 1-N best."""
         result = await self._multi_select_codes(
             state["product_description"],
-            state["chapter_candidates"],
+            self.data_loader.codes_2digit,
             "select_chapter_candidates",
             ClassificationLevel.CHAPTER,
             max_selections=state["max_selections"]
@@ -529,33 +379,17 @@ Select the most accurate code."""
             "chapter_reasonings": result["reasonings"]
         }
 
-    async def _multi_rank_headings(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Rank heading candidates for each selected chapter."""
-        heading_candidates_by_chapter = {}
-
-        for chapter_code in state["selected_chapters"]:
-            codes = {c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)}
-            ranked = await self._rank_codes(
-                state["product_description"],
-                codes,
-                state["top_k"],
-                "rank_heading_candidates",
-                parent_code=chapter_code
-            )
-            heading_candidates_by_chapter[chapter_code] = ranked
-
-        return {**state, "heading_candidates_by_chapter": heading_candidates_by_chapter}
-
     async def _multi_select_headings(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Select 1-N best headings for each chapter."""
+        """Evaluate all headings for each chapter and select 1-N best."""
         selected_headings = {}
         confidences = {}
         reasonings = {}
 
-        for chapter_code, candidates in state["heading_candidates_by_chapter"].items():
+        for chapter_code in state["selected_chapters"]:
+            codes = {c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)}
             result = await self._multi_select_codes(
                 state["product_description"],
-                candidates,
+                codes,
                 "select_heading_candidates",
                 ClassificationLevel.HEADING,
                 max_selections=state["max_selections"],
@@ -572,42 +406,26 @@ Select the most accurate code."""
             "heading_reasonings_by_chapter": reasonings
         }
 
-    async def _multi_rank_subheadings(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Rank subheading candidates for each selected heading."""
-        subheading_candidates_by_heading = {}
-
-        for chapter_code, headings in state["selected_headings_by_chapter"].items():
-            for heading_code in headings:
-                codes = {c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)}
-                ranked = await self._rank_codes(
-                    state["product_description"],
-                    codes,
-                    state["top_k"],
-                    "rank_subheading_candidates",
-                    parent_code=heading_code
-                )
-                subheading_candidates_by_heading[heading_code] = ranked
-
-        return {**state, "subheading_candidates_by_heading": subheading_candidates_by_heading}
-
     async def _multi_select_subheadings(self, state: MultiChoiceState) -> MultiChoiceState:
-        """Select 1-N best subheadings for each heading."""
+        """Evaluate all subheadings for each heading and select 1-N best."""
         selected_subheadings = {}
         confidences = {}
         reasonings = {}
 
-        for heading_code, candidates in state["subheading_candidates_by_heading"].items():
-            result = await self._multi_select_codes(
-                state["product_description"],
-                candidates,
-                "select_subheading_candidates",
-                ClassificationLevel.SUBHEADING,
-                max_selections=state["max_selections"],
-                parent_code=heading_code
-            )
-            selected_subheadings[heading_code] = result["codes"]
-            confidences[heading_code] = result["confidences"]
-            reasonings[heading_code] = result["reasonings"]
+        for chapter_code, headings in state["selected_headings_by_chapter"].items():
+            for heading_code in headings:
+                codes = {c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)}
+                result = await self._multi_select_codes(
+                    state["product_description"],
+                    codes,
+                    "select_subheading_candidates",
+                    ClassificationLevel.SUBHEADING,
+                    max_selections=state["max_selections"],
+                    parent_code=heading_code
+                )
+                selected_subheadings[heading_code] = result["codes"]
+                confidences[heading_code] = result["confidences"]
+                reasonings[heading_code] = result["reasonings"]
 
         return {
             **state,
@@ -778,32 +596,49 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
     async def _multi_select_codes(
         self,
         product_description: str,
-        candidates: List[Dict],
+        codes_dict: Dict,
         config_name: str,
         level: ClassificationLevel,
         max_selections: int = 3,
         parent_code: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Select 1-N codes from candidates using multi-selection."""
+        """Evaluate all codes and select 1-N best using multi-selection."""
+        
+        # Prepare candidates list from codes dict
+        candidates_list = "\n".join([
+            f"{code}: {hs.description}"
+            for code, hs in codes_dict.items()
+        ])
         
         # Get config
         config = self.configs.get(config_name, {})
 
         system_prompt = get_prompt(config, "system") or f"""You are an HS code classification expert.
-Select 1-{max_selections} BEST codes. Provide confidence (0.0-1.0) for each and overall reasoning."""
+Evaluate all codes and select 1-{max_selections} BEST codes. Provide confidence (0.0-1.0) for each and overall reasoning."""
 
-        # Build template variables using DRY utility method
-        template_vars = self._build_base_template_vars(product_description, candidates, level, parent_code)
-        template_vars["max_selections"] = max_selections  # Add multi-selection specific variable
+        # Build template variables
+        template_vars = {
+            "product_description": product_description,
+            "candidates_list": candidates_list,
+            "level": self._get_level_name(level),
+            "max_selections": max_selections
+        }
+        
+        # Add parent context based on level
+        if parent_code:
+            if level == ClassificationLevel.HEADING:
+                template_vars["parent_chapter"] = parent_code
+            elif level == ClassificationLevel.SUBHEADING:
+                template_vars["parent_heading"] = parent_code
 
         user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
-Level: {level_names[level.value]}
+Level: {self._get_level_name(level)}
 Parent: {parent_code if parent_code else 'None'}
 
 Candidates:
-{ranked_candidates_detailed}
+{candidates_list}
 
-Select 1-{max_selections} most accurate codes."""
+Evaluate all codes and select 1-{max_selections} most accurate codes."""
 
         try:
             # Get config-specific model for this multi-selection step
@@ -828,7 +663,7 @@ Select 1-{max_selections} most accurate codes."""
             if (json_schema := config.get("output_schema")) and "select" in config_name:
                 # Add enum constraint inline
                 schema = json_schema.copy()
-                candidate_codes = [c["code"] for c in candidates]
+                candidate_codes = list(codes_dict.keys())
                 if "properties" in schema and "selected_codes" in schema["properties"]:
                     if "items" not in schema["properties"]["selected_codes"]:
                         schema["properties"]["selected_codes"]["items"] = {}
@@ -847,21 +682,20 @@ Select 1-{max_selections} most accurate codes."""
             if result is None:
                 raise ValueError("LLM returned None")
 
-            # Validate that all selected codes are in candidates
-            candidate_codes = {c['code'] for c in candidates}
+            # Validate that all selected codes are in codes_dict
             valid_codes = []
             valid_confidences = []
 
             for i, code in enumerate(result["selected_codes"]):
-                if code in candidate_codes:
+                if code in codes_dict:
                     valid_codes.append(code)
                     valid_confidences.append(result["individual_confidences"][i])
                 else:
-                    logger.warning(f"⚠️  LLM selected invalid code '{code}' not in candidates, skipping")
+                    logger.warning(f"⚠️  LLM selected invalid code '{code}' not in codes, skipping")
 
             # If no valid codes, raise error instead of fallback
             if not valid_codes:
-                raise ValueError(f"No valid codes selected from candidates. LLM selected: {result['selected_codes']}, Available: {list(candidate_codes)}")
+                raise ValueError(f"No valid codes selected. LLM selected: {result['selected_codes']}, Available: {list(codes_dict.keys())}")
             
             reasoning = result["reasoning"]
 
