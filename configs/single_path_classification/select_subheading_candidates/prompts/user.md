@@ -16,6 +16,8 @@ For each subheading, consider:
 - Intended use and functional characteristics
 
 Provide:
-- The subheading code you're selecting (this is the final HS code)
+- The subheading code you're selecting (this is the final HS code), or "000000" if the description is invalid/meaningless
 - A confidence score from 0.0 to 1.0
 - Detailed reasoning explaining why this is the most accurate and defensible classification for this product
+
+Note: If the product description is completely invalid, meaningless, or just a test input (e.g., "test", gibberish), you may select "000000" instead of forcing a classification.

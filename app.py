@@ -121,10 +121,43 @@ async def classify_product(request: ClassificationRequest):
                 max_selections=request.max_selections
             )
 
-            # Extract the final selected path for the response
-            final_path = next((p for p in multi_result.paths if p.subheading_code == multi_result.final_selected_code), multi_result.paths[0])
-
             logger.classify_result(multi_result.final_selected_code, multi_result.final_confidence, f"✨ Explored {len(multi_result.paths)} paths")
+
+            # Handle special "000000" case for invalid descriptions
+            if multi_result.final_selected_code == "000000":
+                return ClassificationResponse(
+                    product_description=request.product_description,
+                    final_code="000000",
+                    overall_confidence=multi_result.final_confidence,
+                    chapter=ClassificationResult(
+                        level=ClassificationLevel.CHAPTER,
+                        selected_code="00",
+                        description="No HS Code - Invalid or unclassifiable description",
+                        confidence=multi_result.final_confidence,
+                        reasoning=multi_result.final_reasoning
+                    ),
+                    heading=ClassificationResult(
+                        level=ClassificationLevel.HEADING,
+                        selected_code="0000",
+                        description="No HS Code - Invalid or unclassifiable description",
+                        confidence=multi_result.final_confidence,
+                        reasoning=multi_result.final_reasoning
+                    ),
+                    subheading=ClassificationResult(
+                        level=ClassificationLevel.SUBHEADING,
+                        selected_code="000000",
+                        description="No HS Code - Invalid or unclassifiable description",
+                        confidence=multi_result.final_confidence,
+                        reasoning=multi_result.final_reasoning
+                    ),
+                    processing_time_ms=multi_result.processing_time_ms,
+                    paths_explored=multi_result.paths,
+                    comparison_reasoning=multi_result.final_reasoning,
+                    comparison_summary=multi_result.comparison_summary
+                )
+
+            # Extract the final selected path for the response (normal case)
+            final_path = next((p for p in multi_result.paths if p.subheading_code == multi_result.final_selected_code), multi_result.paths[0])
 
             # Convert to ClassificationResponse format with additional info
             return ClassificationResponse(

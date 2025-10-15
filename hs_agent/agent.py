@@ -274,6 +274,16 @@ Evaluate all codes and select the most accurate one."""
             if result is None:
                 raise ValueError("LLM returned None")
 
+            # Handle special "000000" code for invalid descriptions
+            if result["selected_code"] == "000000":
+                return ClassificationResult(
+                    level=level,
+                    selected_code="000000",
+                    description="No HS Code - Invalid or unclassifiable description",
+                    confidence=result["confidence"],
+                    reasoning=result["reasoning"]
+                )
+
             # Validate that selected code is in codes_dict
             if result["selected_code"] not in codes_dict:
                 # LLM returned invalid code - this should not happen with proper schemas
@@ -575,6 +585,16 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
 
             if result is None:
                 raise ValueError("LLM returned None")
+
+            # Handle special "000000" code for invalid descriptions
+            if result["selected_code"] == "000000":
+                return {
+                    **state,
+                    "final_selected_code": "000000",
+                    "final_confidence": result["confidence"],
+                    "final_reasoning": result["reasoning"],
+                    "comparison_summary": result["comparison_summary"]
+                }
 
             # Validate that selected code is in one of the paths
             path_codes = {path.subheading_code for path in paths}
