@@ -1,8 +1,9 @@
 """Core models for HS Agent."""
 
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, model_validator
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class ClassificationLevel(str, Enum):
@@ -10,6 +11,24 @@ class ClassificationLevel(str, Enum):
     CHAPTER = "2"  # 2-digit
     HEADING = "4"  # 4-digit
     SUBHEADING = "6"  # 6-digit
+
+
+# === Special Code Constants ===
+
+NO_HS_CODE = "000000"
+NO_HS_CODE_DESCRIPTION = "No HS Code - Invalid or unclassifiable description"
+
+
+def is_no_hs_code(code: str) -> bool:
+    """Check if the given code is the special 'no HS code' marker.
+
+    Args:
+        code: The HS code to check
+
+    Returns:
+        True if the code is the special "000000" marker, False otherwise
+    """
+    return code == NO_HS_CODE
 
 
 # === Core HS Code Models ===
@@ -42,6 +61,30 @@ class ClassificationResult(BaseModel):
     description: str
     confidence: float
     reasoning: str
+
+
+def create_no_hs_code_result(
+    level: ClassificationLevel,
+    confidence: float,
+    reasoning: str
+) -> ClassificationResult:
+    """Create a ClassificationResult for the special 'no HS code' case.
+
+    Args:
+        level: The classification level
+        confidence: Confidence score for this result
+        reasoning: Explanation for why no HS code could be assigned
+
+    Returns:
+        ClassificationResult with the special "000000" code
+    """
+    return ClassificationResult(
+        level=level,
+        selected_code=NO_HS_CODE,
+        description=NO_HS_CODE_DESCRIPTION,
+        confidence=confidence,
+        reasoning=reasoning
+    )
 
 
 class ClassificationPath(BaseModel):

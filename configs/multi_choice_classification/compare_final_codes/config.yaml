@@ -2,8 +2,8 @@ model:
   name: gemini-2.5-flash
   parameters:
     temperature: 0.1
-    max_tokens: 8192
-    top_p: 0.95
+    
+    
     thinking_budget: 0
 prompts:
   system: prompts/system.md

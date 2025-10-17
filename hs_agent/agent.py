@@ -1,21 +1,26 @@
 """HS classification agent with LangGraph."""
 
-from typing import Dict, Any, List, Optional
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_google_vertexai import ChatVertexAI
-from langgraph.graph import StateGraph, START, END
+import copy
+from typing import Any, Dict, List, Optional
 
-from hs_agent.models import (
-    ClassificationLevel,
-    ClassificationResult,
-    ClassificationResponse,
-    MultiChoiceClassificationResponse,
-    ClassificationPath
-)
-from hs_agent.graph_models import ClassificationState, MultiChoiceState
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_google_vertexai import ChatVertexAI
+from langgraph.graph import END, START, StateGraph
+
 from hs_agent.config.settings import settings
+from hs_agent.config_loader import get_model_params, get_prompt, load_workflow_configs
 from hs_agent.data_loader import HSDataLoader
-from hs_agent.config_loader import load_workflow_configs, get_prompt, get_model_params
+from hs_agent.graph_models import ClassificationState, MultiChoiceState
+from hs_agent.models import (
+    NO_HS_CODE,
+    ClassificationLevel,
+    ClassificationPath,
+    ClassificationResponse,
+    ClassificationResult,
+    MultiChoiceClassificationResponse,
+    create_no_hs_code_result,
+    is_no_hs_code,
+)
 from hs_agent.utils.logger import get_logger
 
 # Get centralized logger
@@ -69,10 +74,102 @@ class HSAgent:
         self.multi_graph = self._build_multi_graph()
 
     # === DRY UTILITY METHODS ===
-    
+
     def _get_level_name(self, level: ClassificationLevel) -> str:
         """Get human-readable level name. Follows DRY principle."""
         return self.LEVEL_NAMES[level.value]
+
+    def _create_base_model(self, model_params: Dict[str, Any]) -> ChatVertexAI:
+        """Create a base ChatVertexAI model with standard configuration.
+
+        Args:
+            model_params: Model parameters from config
+
+        Returns:
+            Configured ChatVertexAI instance
+        """
+        model_kwargs = {
+            "model": model_params.get("model_name", self.model_name),
+            "temperature": model_params.get("temperature", 0.1),
+            "max_tokens": model_params.get("max_tokens", 8192),
+            "top_p": model_params.get("top_p", 0.95),
+        }
+
+        # Add thinking_budget if enabled (Gemini 2.5+ only)
+        thinking_budget = model_params.get("thinking_budget")
+        if thinking_budget is not None and thinking_budget > 0:
+            model_kwargs["thinking_budget"] = thinking_budget
+            model_kwargs["include_thoughts"] = True
+
+        return ChatVertexAI(**model_kwargs)
+
+    async def _invoke_with_retry(
+        self,
+        model: Any,
+        messages: List,
+        max_retries: int = 3,
+        initial_delay: float = 1.0
+    ) -> Any:
+        """Invoke LLM with retry logic for None results.
+
+        Args:
+            model: The LLM model to invoke
+            messages: Messages to send to the model
+            max_retries: Maximum number of retry attempts (default: 3)
+            initial_delay: Initial delay between retries in seconds (default: 1.0)
+
+        Returns:
+            LLM response, or None if all retries exhausted
+
+        Note:
+            Returns None if all retries are exhausted. Caller should handle this
+            by returning a "000000" (insufficient information) response.
+
+            On retries, adds line breaks to the prompt for variation.
+        """
+        import asyncio
+
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                # Add prompt variation on retries by appending line breaks
+                # This gives the LLM a slightly different context which may help
+                messages_to_send = messages
+                if attempt > 0:
+                    # Create a modified copy with line breaks added to the last message
+                    messages_to_send = messages[:-1] + [
+                        type(messages[-1])(content=messages[-1].content + "\n" * attempt)
+                    ]
+                    logger.debug(f"🔄 Added {attempt} line break(s) to prompt for variation")
+
+                result = await model.ainvoke(messages_to_send)
+
+                if result is not None:
+                    return result
+
+                # Log None result and retry
+                logger.warning(f"⚠️  LLM returned None (attempt {attempt + 1}/{max_retries})")
+
+                if attempt < max_retries - 1:
+                    # Exponential backoff: 1s, 2s, 4s, etc.
+                    delay = initial_delay * (2 ** attempt)
+                    logger.info(f"🔄 Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+
+            except Exception as e:
+                last_exception = e
+                logger.warning(f"⚠️  LLM invocation error (attempt {attempt + 1}/{max_retries}): {e}")
+
+                if attempt < max_retries - 1:
+                    delay = initial_delay * (2 ** attempt)
+                    logger.info(f"🔄 Retrying in {delay}s...")
+                    await asyncio.sleep(delay)
+
+        # All retries exhausted - return None to signal caller to use "000000" code
+        error_context = f" (last error: {last_exception})" if last_exception else ""
+        logger.error(f"❌ LLM failed after {max_retries} attempts{error_context} - will return 000000 (insufficient information)")
+        return None
 
     def _get_model_for_config(self, config_name: str, output_schema: Optional[type] = None) -> Any:
         """Create a ChatVertexAI model configured for a specific workflow step.
@@ -88,23 +185,8 @@ class HSAgent:
         config = self.configs.get(config_name, {})
         model_params = get_model_params(config)
 
-        # Build model kwargs with config-specific parameters or defaults
-        model_kwargs = {
-            "model": model_params.get("model_name", self.model_name),
-            "temperature": model_params.get("temperature", 0.1),
-            "max_tokens": model_params.get("max_tokens", 8192),
-            "top_p": model_params.get("top_p", 0.95),
-        }
-
-        # Add thinking_budget and include_thoughts if thinking is enabled (only supported in Gemini 2.5+ models)
-        # Note: include_thoughts can only be used when thinking_budget is set to a positive value
-        thinking_budget = model_params.get("thinking_budget")
-        if thinking_budget is not None and thinking_budget > 0:
-            model_kwargs["thinking_budget"] = thinking_budget
-            model_kwargs["include_thoughts"] = True
-
-        # Create base model
-        model = ChatVertexAI(**model_kwargs)
+        # Create base model using extracted method
+        model = self._create_base_model(model_params)
 
         # Use JSON Schema directly from config
         if json_schema := config.get("output_schema"):
@@ -266,20 +348,24 @@ Evaluate all codes and select the most accurate one."""
             # Get config-specific model for this selection step
             selection_model = self._get_model_for_config(config_name)
 
-            result = await selection_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # Invoke with retry logic
+            result = await self._invoke_with_retry(
+                selection_model,
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            )
 
+            # Handle exhausted retries - return "000000" (insufficient information)
             if result is None:
-                raise ValueError("LLM returned None")
+                return create_no_hs_code_result(
+                    level=level,
+                    confidence=0.0,
+                    reasoning="Unable to classify - LLM failed to return valid response after retries"
+                )
 
             # Handle special "000000" code for invalid descriptions
-            if result["selected_code"] == "000000":
-                return ClassificationResult(
+            if is_no_hs_code(result["selected_code"]):
+                return create_no_hs_code_result(
                     level=level,
-                    selected_code="000000",
-                    description="No HS Code - Invalid or unclassifiable description",
                     confidence=result["confidence"],
                     reasoning=result["reasoning"]
                 )
@@ -578,19 +664,27 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
             # Get config-specific model for comparison
             comparison_model = self._get_model_for_config("compare_final_codes")
 
-            result = await comparison_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # Invoke with retry logic
+            result = await self._invoke_with_retry(
+                comparison_model,
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            )
 
+            # Handle exhausted retries - return "000000" (insufficient information)
             if result is None:
-                raise ValueError("LLM returned None")
-
-            # Handle special "000000" code for invalid descriptions
-            if result["selected_code"] == "000000":
                 return {
                     **state,
-                    "final_selected_code": "000000",
+                    "final_selected_code": NO_HS_CODE,
+                    "final_confidence": 0.0,
+                    "final_reasoning": "Unable to classify - LLM failed to return valid response after retries",
+                    "comparison_summary": "Classification failed due to LLM errors"
+                }
+
+            # Handle special "000000" code for invalid descriptions
+            if is_no_hs_code(result["selected_code"]):
+                return {
+                    **state,
+                    "final_selected_code": NO_HS_CODE,
                     "final_confidence": result["confidence"],
                     "final_reasoning": result["reasoning"],
                     "comparison_summary": result["comparison_summary"]
@@ -663,66 +757,94 @@ Evaluate all codes and select 1-{max_selections} most accurate codes."""
         try:
             # Get config-specific model for this multi-selection step
             config = self.configs.get(config_name, {})
-            
-            # Get base model
+
+            # Get base model using extracted method
             model_params = get_model_params(config)
-            model_kwargs = {
-                "model": model_params.get("model_name", self.model_name),
-                "temperature": model_params.get("temperature", 0.1),
-                "max_tokens": model_params.get("max_tokens", 8192),
-                "top_p": model_params.get("top_p", 0.95),
-            }
-            thinking_budget = model_params.get("thinking_budget")
-            if thinking_budget is not None and thinking_budget > 0:
-                model_kwargs["thinking_budget"] = thinking_budget
-                model_kwargs["include_thoughts"] = True
-                
-            base_model = ChatVertexAI(**model_kwargs)
+            base_model = self._create_base_model(model_params)
             
             # Add enum constraints for selection schemas
             if (json_schema := config.get("output_schema")) and "select" in config_name:
-                # Add enum constraint inline
-                schema = json_schema.copy()
+                # Add enum constraint inline - use deepcopy to avoid modifying cached config
+                schema = copy.deepcopy(json_schema)
                 candidate_codes = list(codes_dict.keys())
-                if "properties" in schema and "selected_codes" in schema["properties"]:
-                    if "items" not in schema["properties"]["selected_codes"]:
-                        schema["properties"]["selected_codes"]["items"] = {}
-                    schema["properties"]["selected_codes"]["items"]["enum"] = candidate_codes
+                # Update enum for new "selections" structure
+                if "properties" in schema and "selections" in schema["properties"]:
+                    if "items" in schema["properties"]["selections"]:
+                        if "properties" not in schema["properties"]["selections"]["items"]:
+                            schema["properties"]["selections"]["items"]["properties"] = {}
+                        if "code" not in schema["properties"]["selections"]["items"]["properties"]:
+                            schema["properties"]["selections"]["items"]["properties"]["code"] = {"type": "string"}
+                        schema["properties"]["selections"]["items"]["properties"]["code"]["enum"] = candidate_codes
                 multi_selection_model = base_model.with_structured_output(schema)
             elif json_schema:
                 multi_selection_model = base_model.with_structured_output(json_schema)
             else:
                 multi_selection_model = base_model
 
-            result = await multi_selection_model.ainvoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
-            ])
+            # Invoke with retry logic
+            result = await self._invoke_with_retry(
+                multi_selection_model,
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            )
 
+            # Handle exhausted retries - return "000000" (insufficient information)
             if result is None:
-                raise ValueError("LLM returned None")
+                return {
+                    "codes": [NO_HS_CODE],
+                    "confidences": [0.0],
+                    "reasonings": ["Unable to classify - LLM failed to return valid response after retries"]
+                }
 
             # Validate that all selected codes are in codes_dict
             valid_codes = []
             valid_confidences = []
+            valid_reasonings = []
 
-            for i, code in enumerate(result["selected_codes"]):
+            # Handle new unified "selections" structure
+            selections = result.get("selections", [])
+
+            # Handle empty selections - return "000000" instead of raising error
+            if not selections:
+                logger.warning("⚠️  LLM returned empty selections array - will return 000000")
+                return {
+                    "codes": [NO_HS_CODE],
+                    "confidences": [0.0],
+                    "reasonings": ["Unable to classify - LLM returned empty selections"]
+                }
+
+            for selection in selections:
+                code = selection.get("code")
+                confidence = selection.get("confidence", 0.5)
+                reasoning = selection.get("reasoning", "No reasoning provided")
+
+                if not code:
+                    logger.warning("⚠️  Selection missing 'code' field, skipping")
+                    continue
+
                 if code in codes_dict:
                     valid_codes.append(code)
-                    valid_confidences.append(result["individual_confidences"][i])
+                    valid_confidences.append(confidence)
+                    valid_reasonings.append(reasoning)
                 else:
                     logger.warning(f"⚠️  LLM selected invalid code '{code}' not in codes, skipping")
 
-            # If no valid codes, raise error instead of fallback
+            # If no valid codes, return "000000" instead of raising error
             if not valid_codes:
-                raise ValueError(f"No valid codes selected. LLM selected: {result['selected_codes']}, Available: {list(codes_dict.keys())}")
-            
-            reasoning = result["reasoning"]
+                selected_codes = [s.get("code") for s in selections]
+                logger.warning(
+                    f"⚠️  No valid codes selected - will return 000000. "
+                    f"LLM selected: {selected_codes}, Available: {list(codes_dict.keys())[:10]}..."
+                )
+                return {
+                    "codes": [NO_HS_CODE],
+                    "confidences": [0.0],
+                    "reasonings": [f"Unable to classify - LLM selected invalid codes: {selected_codes}"]
+                }
 
             return {
                 "codes": valid_codes,
                 "confidences": valid_confidences,
-                "reasonings": [reasoning] * len(valid_codes)
+                "reasonings": valid_reasonings
             }
 
         except Exception as e:

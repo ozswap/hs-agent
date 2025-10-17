@@ -11,10 +11,7 @@ Return a JSON object with selected candidates and selection methodology.
 3. **confidence**: Individual confidence for each selection
 4. **reasoning**: Detailed justification for each selection
 
-### Selection Guidelines:
-- **High confidence (>0.8)**: Select 1-2 candidates
-- **Medium confidence (0.6-0.8)**: Select 2-3 candidates
-- **Low confidence (<0.6)**: Select 2-3 candidates with diverse coverage
+
 
 ### Example Output:
 ```json

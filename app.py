@@ -3,21 +3,24 @@
 import time
 from datetime import datetime
 from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from hs_agent.agent import HSAgent
+from hs_agent.config.settings import settings
 from hs_agent.data_loader import HSDataLoader
 from hs_agent.models import (
+    ClassificationLevel,
     ClassificationRequest,
     ClassificationResponse,
     ClassificationResult,
-    ClassificationLevel,
     MultiChoiceClassificationRequest,
-    MultiChoiceClassificationResponse
+    MultiChoiceClassificationResponse,
+    create_no_hs_code_result,
+    is_no_hs_code,
 )
-from hs_agent.config.settings import settings
 from hs_agent.utils.logger import get_logger
 
 # Get centralized logger with consistent styling
@@ -42,8 +45,16 @@ _agent_wide_net = None
 _agent_multi_choice = None
 
 
-def get_agent(use_wide_net: bool = False):
-    """Get or create agent instance."""
+def get_agent(use_wide_net: bool = False, use_multi_choice: bool = False):
+    """Get or create agent instance.
+
+    Args:
+        use_wide_net: Use wide net classification workflow
+        use_multi_choice: Use multi-choice classification workflow
+
+    Returns:
+        Agent instance configured for the specified workflow
+    """
     global _data_loader, _agent_standard, _agent_wide_net, _agent_multi_choice
 
     # Initialize data loader if needed
@@ -54,7 +65,13 @@ def get_agent(use_wide_net: bool = False):
         logger.init_complete("Data Loader", f"📊 Loaded {len(_data_loader.codes_6digit)} codes")
 
     # Get appropriate agent
-    if use_wide_net:
+    if use_multi_choice:
+        if _agent_multi_choice is None:
+            logger.init_start("Multi-Choice Agent", "1-to-N paths")
+            _agent_multi_choice = HSAgent(_data_loader, workflow_name="multi_choice_classification")
+            logger.init_complete("Multi-Choice Agent", "🔀 Adaptive path exploration")
+        return _agent_multi_choice
+    elif use_wide_net:
         if _agent_wide_net is None:
             logger.init_start("Wide Net Agent", "high performance mode")
             _agent_wide_net = HSAgent(_data_loader, workflow_name="wide_net_classification")
@@ -124,29 +141,23 @@ async def classify_product(request: ClassificationRequest):
             logger.classify_result(multi_result.final_selected_code, multi_result.final_confidence, f"✨ Explored {len(multi_result.paths)} paths")
 
             # Handle special "000000" case for invalid descriptions
-            if multi_result.final_selected_code == "000000":
+            if is_no_hs_code(multi_result.final_selected_code):
                 return ClassificationResponse(
                     product_description=request.product_description,
-                    final_code="000000",
+                    final_code=multi_result.final_selected_code,
                     overall_confidence=multi_result.final_confidence,
-                    chapter=ClassificationResult(
+                    chapter=create_no_hs_code_result(
                         level=ClassificationLevel.CHAPTER,
-                        selected_code="00",
-                        description="No HS Code - Invalid or unclassifiable description",
                         confidence=multi_result.final_confidence,
                         reasoning=multi_result.final_reasoning
                     ),
-                    heading=ClassificationResult(
+                    heading=create_no_hs_code_result(
                         level=ClassificationLevel.HEADING,
-                        selected_code="0000",
-                        description="No HS Code - Invalid or unclassifiable description",
                         confidence=multi_result.final_confidence,
                         reasoning=multi_result.final_reasoning
                     ),
-                    subheading=ClassificationResult(
+                    subheading=create_no_hs_code_result(
                         level=ClassificationLevel.SUBHEADING,
-                        selected_code="000000",
-                        description="No HS Code - Invalid or unclassifiable description",
                         confidence=multi_result.final_confidence,
                         reasoning=multi_result.final_reasoning
                     ),
@@ -224,22 +235,7 @@ async def classify_product_multi(request: MultiChoiceClassificationRequest):
     """
     try:
         # Use multi-choice classification workflow (not wide net)
-        global _agent_multi_choice, _data_loader
-        
-        # Initialize data loader if needed
-        if _data_loader is None:
-            logger.init_start("Data Loader")
-            _data_loader = HSDataLoader()
-            _data_loader.load_all_data()
-            logger.init_complete("Data Loader", f"📊 Loaded {len(_data_loader.codes_6digit)} codes")
-        
-        # Initialize multi-choice agent if needed
-        if _agent_multi_choice is None:
-            logger.init_start("Multi-Choice Agent", "1-to-N paths")
-            _agent_multi_choice = HSAgent(_data_loader, workflow_name="multi_choice_classification")
-            logger.init_complete("Multi-Choice Agent", "🔀 Adaptive path exploration")
-        
-        agent = _agent_multi_choice
+        agent = get_agent(use_multi_choice=True)
 
         logger.info(f"🔀 [bold]Multi-Choice Classification:[/bold] [cyan]{request.product_description}[/cyan] [dim](max_selections={request.max_selections})[/dim]")
         result = await agent.classify_multi(
