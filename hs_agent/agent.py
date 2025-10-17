@@ -12,6 +12,7 @@ from hs_agent.data_loader import HSDataLoader
 from hs_agent.factories import ModelFactory
 from hs_agent.graph_models import ClassificationState, MultiChoiceState
 from hs_agent.policies import RetryPolicy
+from hs_agent.services import ChapterNotesService
 from hs_agent.models import (
     NO_HS_CODE,
     ClassificationLevel,
@@ -52,6 +53,9 @@ class HSAgent:
 
         # Initialize retry policy for LLM invocations
         self.retry_policy = RetryPolicy(max_retries=3, initial_delay=1.0, prompt_variation=True)
+
+        # Initialize chapter notes service
+        self.chapter_notes_service = ChapterNotesService()
 
         # Initialize Langfuse if enabled (SDK v3)
         self.langfuse_handler = None
@@ -465,41 +469,6 @@ Evaluate all codes and select the most accurate one."""
 
         return {**state, "paths": top_paths, "overall_strategy": overall_strategy}
 
-    def _load_chapter_notes(self, chapter_codes: List[str]) -> str:
-        """Load chapter notes for given chapter codes.
-
-        Args:
-            chapter_codes: List of 2-digit chapter codes (e.g., ['85', '92'])
-
-        Returns:
-            Formatted string with chapter notes
-        """
-        from pathlib import Path
-
-        notes_dir = Path("data/chapters_markdown")
-        if not notes_dir.exists():
-            return "Chapter notes not available."
-
-        chapter_notes = []
-        for chapter_code in sorted(set(chapter_codes)):  # Remove duplicates and sort
-            # Format: chapter_01_notes.md, chapter_85_notes.md, etc.
-            notes_file = notes_dir / f"chapter_{chapter_code}_notes.md"
-
-            if notes_file.exists():
-                try:
-                    with open(notes_file, 'r', encoding='utf-8') as f:
-                        content = f.read().strip()
-                        chapter_notes.append(f"═══ CHAPTER {chapter_code} NOTES ═══\n{content}")
-                except Exception as e:
-                    logger.warning(f"⚠️  Failed to load notes for chapter {chapter_code}: {e}")
-            else:
-                logger.debug(f"Notes file not found for chapter {chapter_code}")
-
-        if not chapter_notes:
-            return "No chapter notes available for the chapters in these paths."
-
-        return "\n\n".join(chapter_notes)
-
     async def _compare_final_codes(self, state: MultiChoiceState) -> MultiChoiceState:
         """Compare all paths and select the single best HS code."""
         paths = state["paths"]
@@ -509,7 +478,7 @@ Evaluate all codes and select the most accurate one."""
         chapter_codes = list(set(path.chapter_code for path in paths))
 
         # Load chapter notes for all chapters present in paths
-        chapter_notes = self._load_chapter_notes(chapter_codes)
+        chapter_notes = self.chapter_notes_service.load_chapter_notes(chapter_codes)
 
         # Format paths for comparison
         classification_paths = "\n\n".join([
