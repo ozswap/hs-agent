@@ -1,6 +1,5 @@
 """HS classification agent with LangGraph."""
 
-import copy
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -8,8 +7,9 @@ from langchain_google_vertexai import ChatVertexAI
 from langgraph.graph import END, START, StateGraph
 
 from hs_agent.config.settings import settings
-from hs_agent.config_loader import get_model_params, get_prompt, load_workflow_configs
+from hs_agent.config_loader import get_prompt, load_workflow_configs
 from hs_agent.data_loader import HSDataLoader
+from hs_agent.factories import ModelFactory
 from hs_agent.graph_models import ClassificationState, MultiChoiceState
 from hs_agent.models import (
     NO_HS_CODE,
@@ -79,29 +79,6 @@ class HSAgent:
         """Get human-readable level name. Follows DRY principle."""
         return self.LEVEL_NAMES[level.value]
 
-    def _create_base_model(self, model_params: Dict[str, Any]) -> ChatVertexAI:
-        """Create a base ChatVertexAI model with standard configuration.
-
-        Args:
-            model_params: Model parameters from config
-
-        Returns:
-            Configured ChatVertexAI instance
-        """
-        model_kwargs = {
-            "model": model_params.get("model_name", self.model_name),
-            "temperature": model_params.get("temperature", 0.1),
-            "max_tokens": model_params.get("max_tokens", 8192),
-            "top_p": model_params.get("top_p", 0.95),
-        }
-
-        # Add thinking_budget if enabled (Gemini 2.5+ only)
-        thinking_budget = model_params.get("thinking_budget")
-        if thinking_budget is not None and thinking_budget > 0:
-            model_kwargs["thinking_budget"] = thinking_budget
-            model_kwargs["include_thoughts"] = True
-
-        return ChatVertexAI(**model_kwargs)
 
     async def _invoke_with_retry(
         self,
@@ -171,28 +148,6 @@ class HSAgent:
         logger.error(f"❌ LLM failed after {max_retries} attempts{error_context} - will return 000000 (insufficient information)")
         return None
 
-    def _get_model_for_config(self, config_name: str, output_schema: Optional[type] = None) -> Any:
-        """Create a ChatVertexAI model configured for a specific workflow step.
-
-        Args:
-            config_name: Name of the config to use (e.g., 'rank_chapter_candidates')
-            output_schema: Optional Pydantic model for structured output (fallback if no dynamic model)
-
-        Returns:
-            ChatVertexAI model, optionally with structured output
-        """
-        # Get config-specific parameters
-        config = self.configs.get(config_name, {})
-        model_params = get_model_params(config)
-
-        # Create base model using extracted method
-        model = self._create_base_model(model_params)
-
-        # Use JSON Schema directly from config
-        if json_schema := config.get("output_schema"):
-            model = model.with_structured_output(json_schema)
-
-        return model
 
     def _build_graph(self):
         """Build the LangGraph for hierarchical classification."""
@@ -346,7 +301,7 @@ Evaluate all codes and select the most accurate one."""
 
         try:
             # Get config-specific model for this selection step
-            selection_model = self._get_model_for_config(config_name)
+            selection_model = ModelFactory.create_with_config(self.model_name, config)
 
             # Invoke with retry logic
             result = await self._invoke_with_retry(
@@ -662,7 +617,7 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
 
         try:
             # Get config-specific model for comparison
-            comparison_model = self._get_model_for_config("compare_final_codes")
+            comparison_model = ModelFactory.create_with_config(self.model_name, config)
 
             # Invoke with retry logic
             result = await self._invoke_with_retry(
@@ -755,31 +710,12 @@ Candidates:
 Evaluate all codes and select 1-{max_selections} most accurate codes."""
 
         try:
-            # Get config-specific model for this multi-selection step
-            config = self.configs.get(config_name, {})
-
-            # Get base model using extracted method
-            model_params = get_model_params(config)
-            base_model = self._create_base_model(model_params)
-            
-            # Add enum constraints for selection schemas
-            if (json_schema := config.get("output_schema")) and "select" in config_name:
-                # Add enum constraint inline - use deepcopy to avoid modifying cached config
-                schema = copy.deepcopy(json_schema)
-                candidate_codes = list(codes_dict.keys())
-                # Update enum for new "selections" structure
-                if "properties" in schema and "selections" in schema["properties"]:
-                    if "items" in schema["properties"]["selections"]:
-                        if "properties" not in schema["properties"]["selections"]["items"]:
-                            schema["properties"]["selections"]["items"]["properties"] = {}
-                        if "code" not in schema["properties"]["selections"]["items"]["properties"]:
-                            schema["properties"]["selections"]["items"]["properties"]["code"] = {"type": "string"}
-                        schema["properties"]["selections"]["items"]["properties"]["code"]["enum"] = candidate_codes
-                multi_selection_model = base_model.with_structured_output(schema)
-            elif json_schema:
-                multi_selection_model = base_model.with_structured_output(json_schema)
-            else:
-                multi_selection_model = base_model
+            # Use ModelFactory for multi-selection with enum constraints
+            multi_selection_model = ModelFactory.create_for_multi_selection(
+                self.model_name,
+                config,
+                list(codes_dict.keys())
+            )
 
             # Invoke with retry logic
             result = await self._invoke_with_retry(
