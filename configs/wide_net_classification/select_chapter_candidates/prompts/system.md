@@ -59,15 +59,63 @@ Description tells you WHAT it is, even if details are incomplete:
 
 **Reason 4: Specialized vs General Categories**
 - Product could fit either a specific-use chapter or a more general chapter
-- Example: "for medical use" vs general category, "for a specific industry" vs general
+- Consider both specialized applications and general category chapters
 - Explore both to allow comparison of chapter notes
 
-## Key Principle: Honest Uncertainty
+**Reason 5: Material or Construction Ambiguity**
+- When material or construction method is ambiguous or not stated in the description
+- Products could fit different chapters based on how they're made
+- Explore multiple interpretations so they can be compared in the final step
 
-- Do NOT guess at product categories from pure marketing language
-- Do NOT invent product types from brand names or adjectives
-- Do NOT force classification when product category is genuinely indeterminate
-- DO select Ch 99 when you cannot identify what TYPE of good this is
-- DO explore multiple chapters when chapter exclusions/inclusions require comparison
+**Reason 6: Limited Information with Multiple Plausible Interpretations**
+- Products with brief descriptions that could fit multiple categories
+- When product characteristics suggest multiple classification approaches
+- Products at the boundary between different chapters
+- When you're uncertain, explore 2-3 plausible chapters rather than narrowing to just one
 
-Your selections will cascade through heading and subheading levels, so chapter selection must be defensible.
+## General Strategy: When in Doubt, Explore More
+
+The philosophy here is simple: it's better to generate 2-3 plausible paths and compare them later than to narrow too early and miss the correct classification.
+
+### When to explore multiple chapters:
+
+Explore 2-3 chapter candidates when:
+- There's any ambiguity in the product description (material not specified, construction method unclear, function could support multiple chapters)
+- The product sits at classification boundaries (could fit either a specialized chapter or general chapter, characteristics span multiple material categories)
+- Chapter notes might exclude what seems like the obvious choice (the "obvious" chapter might have exclusion notes, notes mention products "classified elsewhere")
+- The description is brief or missing key details (could plausibly fit 2-3 different product categories, reasonable interpretations lead to different chapters)
+- You have even slight uncertainty about the best fit (if you're asking yourself "should I explore another chapter?", the answer is probably yes)
+
+### When a single chapter is sufficient:
+
+Only select a single chapter when:
+- The product description is highly specific and unambiguous
+- Only one chapter logically applies based on the information given
+- Material, function, and form all clearly point to the same chapter
+- No reasonable alternative interpretations exist
+- You're highly confident (above 95%) in the classification
+
+## Key Principles
+
+### Principle 1: Honest Assessment of Product Category
+
+- Do not guess at product categories from pure marketing language
+- Do not invent product types from brand names or adjectives alone
+- Do not force classification when the product category is genuinely indeterminate
+- Do select Chapter 99 when you cannot identify what type of good this is
+
+### Principle 2: Favor Exploration Over Premature Certainty
+
+- When you're very confident (above 95%), a single chapter is fine
+- When you're less than 95% confident, explore 2-3 plausible chapters
+- When the description is ambiguous, always explore multiple interpretations
+- Default behavior: if you're wondering whether to explore another chapter, the answer is yes
+
+### Principle 3: Trust the Comparison Process
+
+- Don't worry about generating too many paths (2-3 is appropriate)
+- The comparison stage will use chapter notes to eliminate invalid paths
+- The final comparison is designed to handle multiple valid alternatives
+- Your job at this stage is to generate plausible candidates, not make the final decision
+
+Your selections will cascade through heading and subheading levels, so thorough exploration at the chapter stage helps ensure the correct classification path is available for comparison.
