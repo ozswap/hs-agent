@@ -349,6 +349,17 @@ meaning of "brewing" and applied appropriate chapter note exclusion.
    - Test section note exclusions (beyond chapter notes)
    - Test cross-chapter classification challenges
 
+4. **Address Product-Specific Inconsistencies**
+   - **Snowboard classification inconsistency identified**: System returns 950619 or 950699 instead of correct 950611
+   - According to Burton Snowboards customs ruling (1989), snowboards should be classified as 9506.11 (same as skis)
+   - Current database has 950611 as "Skis; for snow" without mentioning snowboards
+   - **Impact**: Different duty rates (950611: 2.6%, 950619: 2.8%, 950699: variable)
+   - **Solutions to consider**:
+     - Update database description for 950611 to include snowboards
+     - Add product-specific guidance that snowboards = snow-skis
+     - Create product synonym mapping (snowboard → ski for classification)
+   - Priority: Medium (affects tax calculation but system is functionally working)
+
 ## Test Scripts
 
 - `scripts/test_edge_cases_quick.py` - 5 critical baseline cases
