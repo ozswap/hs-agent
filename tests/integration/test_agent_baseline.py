@@ -11,7 +11,9 @@ from hs_agent.data_loader import HSDataLoader
 from hs_agent.models import (
     ClassificationResponse,
     MultiChoiceClassificationResponse,
-    ClassificationLevel
+    ClassificationLevel,
+    ClassificationResult,
+    ClassificationPath
 )
 
 
@@ -69,7 +71,7 @@ def mock_llm_responses():
         "multi_selection_headings": {
             "selections": [
                 {"code": "8471", "confidence": 0.85, "reasoning": "Data processing"},
-                {"code": "8473": "confidence": 0.7, "reasoning": "Parts of machines"}
+                {"code": "8473", "confidence": 0.7, "reasoning": "Parts of machines"}
             ]
         },
         "multi_selection_subheadings": {
@@ -118,21 +120,21 @@ class TestHSAgentBaseline:
             with patch.object(agent.graph, 'ainvoke', new_callable=AsyncMock) as mock_invoke:
                 mock_invoke.return_value = {
                     "product_description": "laptop computer",
-                    "chapter_result": Mock(
+                    "chapter_result": ClassificationResult(
                         level=ClassificationLevel.CHAPTER,
                         selected_code="84",
                         description="Machinery",
                         confidence=0.9,
                         reasoning="Machinery classification"
                     ),
-                    "heading_result": Mock(
+                    "heading_result": ClassificationResult(
                         level=ClassificationLevel.HEADING,
                         selected_code="8471",
                         description="Data processing machines",
                         confidence=0.85,
                         reasoning="Data processing"
                     ),
-                    "subheading_result": Mock(
+                    "subheading_result": ClassificationResult(
                         level=ClassificationLevel.SUBHEADING,
                         selected_code="847130",
                         description="Portable computers",
@@ -168,11 +170,17 @@ class TestHSAgentBaseline:
             with patch.object(agent.multi_graph, 'ainvoke', new_callable=AsyncMock) as mock_invoke:
                 mock_invoke.return_value = {
                     "product_description": "laptop computer",
-                    "paths": [Mock(
+                    "paths": [ClassificationPath(
                         chapter_code="84",
+                        chapter_description="Machinery",
                         heading_code="8471",
+                        heading_description="Data processing machines",
                         subheading_code="847130",
-                        path_confidence=0.9
+                        subheading_description="Portable computers",
+                        path_confidence=0.9,
+                        chapter_reasoning="Machinery classification",
+                        heading_reasoning="Data processing",
+                        subheading_reasoning="Portable computer"
                     )],
                     "overall_strategy": "Selected 1 path",
                     "final_selected_code": "847130",
@@ -207,23 +215,29 @@ class TestHSAgentBaseline:
         assert callable(agent.classify_multi)
 
     @pytest.mark.asyncio
-    async def test_agent_has_required_private_methods(self, mock_data_loader):
-        """Test that agent has all required private methods (for refactoring reference)."""
+    async def test_agent_has_workflow_composition(self, mock_data_loader):
+        """Test that agent uses workflow composition after refactoring."""
         agent = HSAgent(
             data_loader=mock_data_loader,
             workflow_name="single_path_classification"
         )
 
-        # Document current private methods (these will be refactored)
-        assert hasattr(agent, '_create_base_model')
-        assert hasattr(agent, '_get_model_for_config')
-        assert hasattr(agent, '_invoke_with_retry')
-        assert hasattr(agent, '_build_graph')
-        assert hasattr(agent, '_build_multi_graph')
-        assert hasattr(agent, '_select_code')
-        assert hasattr(agent, '_multi_select_codes')
-        assert hasattr(agent, '_load_chapter_notes')
-        assert hasattr(agent, '_compare_final_codes')
+        # After refactoring: verify agent uses workflow composition pattern
+        # Private methods were extracted to:
+        # - ModelFactory: _create_base_model, _get_model_for_config
+        # - RetryPolicy: _invoke_with_retry
+        # - ChapterNotesService: _load_chapter_notes
+        # - SinglePathWorkflow: _build_graph, _select_code
+        # - MultiPathWorkflow: _build_multi_graph, _multi_select_codes, _compare_final_codes
+
+        assert hasattr(agent, 'single_path_workflow')
+        assert hasattr(agent, 'multi_path_workflow')
+        assert hasattr(agent, 'retry_policy')
+        assert hasattr(agent, 'chapter_notes_service')
+        assert agent.single_path_workflow is not None
+        assert agent.multi_path_workflow is not None
+        assert agent.retry_policy is not None
+        assert agent.chapter_notes_service is not None
 
 
 class TestBackwardCompatibility:
@@ -266,9 +280,27 @@ class TestBackwardCompatibility:
         with patch.object(agent.graph, 'ainvoke', new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = {
                 "product_description": "test",
-                "chapter_result": Mock(selected_code="84", confidence=0.9, reasoning="test"),
-                "heading_result": Mock(selected_code="8471", confidence=0.85, reasoning="test"),
-                "subheading_result": Mock(selected_code="847130", confidence=0.95, reasoning="test"),
+                "chapter_result": ClassificationResult(
+                    level=ClassificationLevel.CHAPTER,
+                    selected_code="84",
+                    description="Machinery",
+                    confidence=0.9,
+                    reasoning="test"
+                ),
+                "heading_result": ClassificationResult(
+                    level=ClassificationLevel.HEADING,
+                    selected_code="8471",
+                    description="Data processing machines",
+                    confidence=0.85,
+                    reasoning="test"
+                ),
+                "subheading_result": ClassificationResult(
+                    level=ClassificationLevel.SUBHEADING,
+                    selected_code="847130",
+                    description="Portable computers",
+                    confidence=0.95,
+                    reasoning="test"
+                ),
                 "final_code": "847130",
                 "overall_confidence": 0.9
             }
@@ -289,7 +321,18 @@ class TestBackwardCompatibility:
         with patch.object(agent.multi_graph, 'ainvoke', new_callable=AsyncMock) as mock_invoke:
             mock_invoke.return_value = {
                 "product_description": "test",
-                "paths": [],
+                "paths": [ClassificationPath(
+                    chapter_code="84",
+                    chapter_description="Machinery",
+                    heading_code="8471",
+                    heading_description="Data processing machines",
+                    subheading_code="847130",
+                    subheading_description="Portable computers",
+                    path_confidence=0.9,
+                    chapter_reasoning="test",
+                    heading_reasoning="test",
+                    subheading_reasoning="test"
+                )],
                 "overall_strategy": "test",
                 "final_selected_code": "847130",
                 "final_confidence": 0.95,
