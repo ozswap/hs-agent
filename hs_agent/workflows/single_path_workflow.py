@@ -162,7 +162,12 @@ Evaluate all codes and select the most accurate one."""
 
         try:
             # Get config-specific model for this selection step
-            selection_model = ModelFactory.create_with_config(self.model_name, config)
+            # Pass enum codes to constrain LLM to only select from valid codes
+            selection_model = ModelFactory.create_with_config(
+                self.model_name,
+                config,
+                enum_codes=list(codes_dict.keys())
+            )
 
             # Invoke with retry logic
             result = await self.retry_policy.invoke_with_retry(

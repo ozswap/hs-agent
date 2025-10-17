@@ -122,11 +122,22 @@ class ModelFactory:
 
         # Add structured output if schema provided
         if schema := config.get("output_schema"):
-            # For selection configs, add enum constraint
-            if enum_codes and "select" in config.get("_name", ""):
-                # Path to the code field in selections array
-                enum_field_path = ["properties", "selections", "items", "properties", "code"]
-                model = ModelFactory.add_structured_output(model, schema, enum_codes, enum_field_path)
+            # Add enum constraint if codes provided
+            if enum_codes:
+                # Detect schema structure and use appropriate field path
+                schema_props = schema.get("properties", {})
+
+                if "selected_code" in schema_props:
+                    # Single selection schema: properties.selected_code
+                    enum_field_path = ["properties", "selected_code"]
+                    model = ModelFactory.add_structured_output(model, schema, enum_codes, enum_field_path)
+                elif "selections" in schema_props:
+                    # Multi-selection schema: properties.selections.items.properties.code
+                    enum_field_path = ["properties", "selections", "items", "properties", "code"]
+                    model = ModelFactory.add_structured_output(model, schema, enum_codes, enum_field_path)
+                else:
+                    # No recognized selection field, add schema without enum
+                    model = ModelFactory.add_structured_output(model, schema)
             else:
                 model = ModelFactory.add_structured_output(model, schema)
 
