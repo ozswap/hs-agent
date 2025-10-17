@@ -27,15 +27,13 @@ from hs_agent.models import (
 from hs_agent.policies import RetryPolicy
 from hs_agent.services import ChapterNotesService
 from hs_agent.utils.logger import get_logger
+from hs_agent.workflows.base_workflow import BaseWorkflow
 
 logger = get_logger("hs_agent.workflows.multi_path")
 
 
-class MultiPathWorkflow:
+class MultiPathWorkflow(BaseWorkflow):
     """Workflow for multi-path HS code classification with path comparison."""
-
-    # Class-level constants
-    LEVEL_NAMES = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
 
     def __init__(
         self,
@@ -59,10 +57,6 @@ class MultiPathWorkflow:
         self.configs = configs
         self.retry_policy = retry_policy
         self.chapter_notes_service = chapter_notes_service
-
-    def _get_level_name(self, level: ClassificationLevel) -> str:
-        """Get human-readable level name."""
-        return self.LEVEL_NAMES[level.value]
 
     def build_graph(self):
         """Build the LangGraph for multi-choice classification (1-N paths)."""
@@ -311,11 +305,8 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
     ) -> Dict[str, Any]:
         """Evaluate all codes and select 1-N best using multi-selection."""
 
-        # Prepare candidates list from codes dict
-        candidates_list = "\n".join([
-            f"{code}: {hs.description}"
-            for code, hs in codes_dict.items()
-        ])
+        # Use base class helper to format candidates
+        candidates_list = self._format_candidates_list(codes_dict)
 
         # Get config
         config = self.configs.get(config_name, {})
@@ -331,12 +322,8 @@ Evaluate all codes and select 1-{max_selections} BEST codes. Provide confidence 
             "max_selections": max_selections
         }
 
-        # Add parent context based on level
-        if parent_code:
-            if level == ClassificationLevel.HEADING:
-                template_vars["parent_chapter"] = parent_code
-            elif level == ClassificationLevel.SUBHEADING:
-                template_vars["parent_heading"] = parent_code
+        # Use base class helper to add parent context
+        self._add_parent_context(template_vars, level, parent_code)
 
         user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
 Level: {self._get_level_name(level)}

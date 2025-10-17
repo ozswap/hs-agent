@@ -24,15 +24,13 @@ from hs_agent.models import (
 )
 from hs_agent.policies import RetryPolicy
 from hs_agent.utils.logger import get_logger
+from hs_agent.workflows.base_workflow import BaseWorkflow
 
 logger = get_logger("hs_agent.workflows.single_path")
 
 
-class SinglePathWorkflow:
+class SinglePathWorkflow(BaseWorkflow):
     """Workflow for single-path hierarchical HS code classification."""
-
-    # Class-level constants
-    LEVEL_NAMES = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
 
     def __init__(
         self,
@@ -53,10 +51,6 @@ class SinglePathWorkflow:
         self.model_name = model_name
         self.configs = configs
         self.retry_policy = retry_policy
-
-    def _get_level_name(self, level: ClassificationLevel) -> str:
-        """Get human-readable level name."""
-        return self.LEVEL_NAMES[level.value]
 
     def build_graph(self):
         """Build the LangGraph for hierarchical classification."""
@@ -140,11 +134,8 @@ class SinglePathWorkflow:
     ) -> ClassificationResult:
         """Evaluate all codes and select the best one using config prompts."""
 
-        # Prepare candidates list from codes dict
-        candidates_list = "\n".join([
-            f"{code}: {hs.description}"
-            for code, hs in codes_dict.items()
-        ])
+        # Use base class helper to format candidates
+        candidates_list = self._format_candidates_list(codes_dict)
 
         # Use prompts from config if available
         config = self.configs.get(config_name, {})
@@ -159,12 +150,8 @@ Evaluate all codes and select the BEST one. Provide confidence (0.0-1.0) and rea
             "level": self._get_level_name(level)
         }
 
-        # Add parent context based on level
-        if parent_code:
-            if level == ClassificationLevel.HEADING:
-                template_vars["parent_chapter"] = parent_code
-            elif level == ClassificationLevel.SUBHEADING:
-                template_vars["parent_heading"] = parent_code
+        # Use base class helper to add parent context
+        self._add_parent_context(template_vars, level, parent_code)
 
         user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
 
