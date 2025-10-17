@@ -11,6 +11,7 @@ from hs_agent.config_loader import get_prompt, load_workflow_configs
 from hs_agent.data_loader import HSDataLoader
 from hs_agent.factories import ModelFactory
 from hs_agent.graph_models import ClassificationState, MultiChoiceState
+from hs_agent.policies import RetryPolicy
 from hs_agent.models import (
     NO_HS_CODE,
     ClassificationLevel,
@@ -49,6 +50,9 @@ class HSAgent:
         workflow_path = Path(f"configs/{workflow_name}")
         self.configs = load_workflow_configs(workflow_path)
 
+        # Initialize retry policy for LLM invocations
+        self.retry_policy = RetryPolicy(max_retries=3, initial_delay=1.0, prompt_variation=True)
+
         # Initialize Langfuse if enabled (SDK v3)
         self.langfuse_handler = None
         if settings.langfuse_enabled:
@@ -78,76 +82,6 @@ class HSAgent:
     def _get_level_name(self, level: ClassificationLevel) -> str:
         """Get human-readable level name. Follows DRY principle."""
         return self.LEVEL_NAMES[level.value]
-
-
-    async def _invoke_with_retry(
-        self,
-        model: Any,
-        messages: List,
-        max_retries: int = 3,
-        initial_delay: float = 1.0
-    ) -> Any:
-        """Invoke LLM with retry logic for None results.
-
-        Args:
-            model: The LLM model to invoke
-            messages: Messages to send to the model
-            max_retries: Maximum number of retry attempts (default: 3)
-            initial_delay: Initial delay between retries in seconds (default: 1.0)
-
-        Returns:
-            LLM response, or None if all retries exhausted
-
-        Note:
-            Returns None if all retries are exhausted. Caller should handle this
-            by returning a "000000" (insufficient information) response.
-
-            On retries, adds line breaks to the prompt for variation.
-        """
-        import asyncio
-
-        last_exception = None
-
-        for attempt in range(max_retries):
-            try:
-                # Add prompt variation on retries by appending line breaks
-                # This gives the LLM a slightly different context which may help
-                messages_to_send = messages
-                if attempt > 0:
-                    # Create a modified copy with line breaks added to the last message
-                    messages_to_send = messages[:-1] + [
-                        type(messages[-1])(content=messages[-1].content + "\n" * attempt)
-                    ]
-                    logger.debug(f"🔄 Added {attempt} line break(s) to prompt for variation")
-
-                result = await model.ainvoke(messages_to_send)
-
-                if result is not None:
-                    return result
-
-                # Log None result and retry
-                logger.warning(f"⚠️  LLM returned None (attempt {attempt + 1}/{max_retries})")
-
-                if attempt < max_retries - 1:
-                    # Exponential backoff: 1s, 2s, 4s, etc.
-                    delay = initial_delay * (2 ** attempt)
-                    logger.info(f"🔄 Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-
-            except Exception as e:
-                last_exception = e
-                logger.warning(f"⚠️  LLM invocation error (attempt {attempt + 1}/{max_retries}): {e}")
-
-                if attempt < max_retries - 1:
-                    delay = initial_delay * (2 ** attempt)
-                    logger.info(f"🔄 Retrying in {delay}s...")
-                    await asyncio.sleep(delay)
-
-        # All retries exhausted - return None to signal caller to use "000000" code
-        error_context = f" (last error: {last_exception})" if last_exception else ""
-        logger.error(f"❌ LLM failed after {max_retries} attempts{error_context} - will return 000000 (insufficient information)")
-        return None
-
 
     def _build_graph(self):
         """Build the LangGraph for hierarchical classification."""
@@ -304,7 +238,7 @@ Evaluate all codes and select the most accurate one."""
             selection_model = ModelFactory.create_with_config(self.model_name, config)
 
             # Invoke with retry logic
-            result = await self._invoke_with_retry(
+            result = await self.retry_policy.invoke_with_retry(
                 selection_model,
                 [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             )
@@ -620,7 +554,7 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
             comparison_model = ModelFactory.create_with_config(self.model_name, config)
 
             # Invoke with retry logic
-            result = await self._invoke_with_retry(
+            result = await self.retry_policy.invoke_with_retry(
                 comparison_model,
                 [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             )
@@ -718,7 +652,7 @@ Evaluate all codes and select 1-{max_selections} most accurate codes."""
             )
 
             # Invoke with retry logic
-            result = await self._invoke_with_retry(
+            result = await self.retry_policy.invoke_with_retry(
                 multi_selection_model,
                 [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             )
