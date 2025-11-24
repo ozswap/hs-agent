@@ -1,93 +1,76 @@
 # HS Agent Documentation
 
-Welcome to the comprehensive documentation for the HS Code Classification Agent system. This project provides advanced AI-powered classification of products into Harmonized System (HS) codes using both traditional and LangGraph-based agent frameworks.
-
-!!! success "Recently Refactored"
-    The HS Agent codebase has been **comprehensively refactored** for improved readability, maintainability, and developer experience. See the [Refactored Structure](architecture/refactored-structure.md) guide for details on the improvements.
+AI-powered Harmonized System (HS) code classification service.
 
 ## Overview
 
-The HS Agent is a sophisticated classification system that helps automate the complex process of assigning HS codes to product descriptions. It supports multiple AI frameworks and provides both API and CLI interfaces for integration.
+HS Agent automatically classifies products into 6-digit HS codes using hierarchical AI workflows. It provides CLI, API, and Web UI interfaces for easy integration.
 
-### Key Features
+## Key Features
 
-- **🤖 Multi-Framework Support**: Traditional Pydantic AI agents and modern LangGraph workflows
-- **📊 Hierarchical Classification**: Progressive refinement from 2-digit to 6-digit HS codes
-- **🌐 RESTful API**: FastAPI-based REST endpoints for easy integration
-- **💻 Unified CLI Interface**: Beautiful command-line interface with rich formatting
-- **⚙️ Centralized Configuration**: Type-safe configuration with validation
-- **🚨 Comprehensive Error Handling**: Structured exceptions with detailed context
-- **📝 Enhanced Logging**: Rich, structured logging with observability
-- **🧪 Organized Testing**: Comprehensive test suite with fixtures and utilities
-- **🏗️ Extensible Architecture**: Modular design for adding new workflows and agents
+- **Hierarchical Classification**: Progressive refinement from 2-digit → 4-digit → 6-digit HS codes
+- **Multiple Workflows**: Standard, Wide Net, and Multi-Choice classification approaches
+- **RESTful API**: FastAPI-based endpoints with interactive docs
+- **Interactive Web UI**: Visual classification with path exploration
+- **CLI Interface**: Beautiful command-line interface with rich formatting
+- **Langfuse Observability**: Track and debug classifications
 
-### Architecture
+## Quick Links
 
-```mermaid
-graph TB
-    A[Product Description] --> B[Data Loader]
-    B --> C{Agent Framework}
-    C -->|Traditional| D[Pydantic AI Agents]
-    C -->|Modern| E[LangGraph Workflows]
-    D --> F[Hierarchical Classification]
-    E --> F
-    F --> G[HS Code Result]
+### Getting Started
+- [Installation](getting-started/installation.md) - Set up the project
+- [Quick Start](getting-started/quickstart.md) - Basic usage examples
+- [Configuration](getting-started/configuration.md) - Environment setup
 
-    H[API Interface] --> C
-    I[CLI Interface] --> C
-```
+### User Guide
+- [CLI Usage](user-guide/cli-usage.md) - Command-line interface
+- [System Overview](user-guide/overview.md) - How it works
 
-## Quick Navigation
+### Technical Details
+- [Wide Net Classification](wide_net_classification_explained.md) - High-performance approach
 
-=== "🚀 Getting Started"
+## Quick Start
 
-    - [Installation](getting-started/installation.md) - Set up the project
-    - [Quick Start](getting-started/quickstart.md) - Basic usage examples
-    - [Configuration](getting-started/configuration.md) - Centralized configuration system
-
-=== "📖 User Guide"
-
-    - [Overview](user-guide/overview.md) - System overview
-    - [CLI Usage](user-guide/cli-usage.md) - New unified command-line interface
-    - [API Usage](user-guide/api-usage.md) - REST API examples
-
-=== "🏗️ Architecture"
-
-    - [Refactored Structure](architecture/refactored-structure.md) - **New improved codebase structure**
-    - [System Design](architecture/system-design.md) - Overall system architecture
-    - [Data Models](architecture/data-models.md) - Organized model structure
-
-=== "🔧 Development"
-
-    - [Testing](development/testing.md) - Organized testing framework
-    - [Contributing](development/contributing.md) - Development guidelines
-    - [Deployment](development/deployment.md) - Deployment strategies
-
-## 🎯 New Unified CLI
-
-The refactored HS Agent includes a beautiful, unified CLI interface:
+### Installation
 
 ```bash
-# Classify products with rich formatting
-hs-agent classify "Laptop computer with 16GB RAM"
-
-# Use specific agent type
-hs-agent classify "Cotton t-shirt" --agent langgraph
-
-# Check system health
-hs-agent health
-
-# View configuration
-hs-agent config --all
+git clone https://github.com/your-org/hs-agent.git
+cd hs-agent
+uv sync
+gcloud auth application-default login
 ```
 
-## 📋 System Requirements
+### Usage
 
-- **Python 3.12+** - Modern Python with async/await support
-- **Google Cloud Vertex AI API access** - For AI model inference
-- **Langfuse (optional)** - For observability and tracing
-- **Rich terminal support** - For beautiful CLI output
+```bash
+# CLI
+uv run hs-agent classify "laptop computer"
 
-## License
+# API Server
+uv run hs-agent serve
 
-This project is licensed under the MIT License. See the LICENSE file for details.
+# Web UI at http://localhost:8000/classify
+```
+
+## Architecture
+
+```
+Product Description
+       ↓
+   Data Loader (HS codes + examples)
+       ↓
+   HSAgent (hierarchical workflow)
+       ↓
+   Classification Result
+   • Chapter (2-digit)
+   • Heading (4-digit)
+   • Subheading (6-digit)
+   • Confidence scores
+   • Reasoning
+```
+
+## Support
+
+- **Issues**: Report bugs on GitHub
+- **Documentation**: Full docs in this directory
+- **Health Check**: Run `uv run hs-agent health`

@@ -2,152 +2,90 @@
 
 Get up and running with HS Agent in minutes.
 
-## Prerequisites
+## CLI Usage
 
-- Python 3.12+
-- Google Cloud account with Vertex AI enabled
-- HS Agent installed (see [Installation](installation.md))
+### Basic Classification
 
-## Basic Classification
+```bash
+# Classify a product
+uv run hs-agent classify "laptop computer"
 
-### Using Traditional Agents
+# Adjust top-k candidates
+uv run hs-agent classify "cotton t-shirt" --top-k 5
 
-```python
-import asyncio
-from hs_agent.agents.traditional.classifier import HSClassifier
-
-async def classify_product():
-    # Initialize the classifier
-    classifier = HSClassifier(
-        data_dir="data",
-        model_name="gemini-2.5-flash"
-    )
-
-    # Classify a product
-    result = await classifier.classify(
-        product_description="Pure-bred Arabian mare for breeding",
-        top_k=3,
-        verbose=True
-    )
-
-    print(f"HS Code: {result['final_code']}")
-    print(f"Confidence: {result['overall_confidence']:.2f}")
-
-# Run the classification
-asyncio.run(classify_product())
+# Enable verbose output
+uv run hs-agent classify "fresh apples" --verbose
 ```
 
-### Using LangGraph Agents
+### System Management
 
-```python
-import asyncio
-from hs_agent.agents.langgraph.classifier import create_langgraph_classifier
+```bash
+# Check system health
+uv run hs-agent health
 
-async def classify_with_langgraph():
-    # Create classifier
-    classifier = create_langgraph_classifier("data")
+# View configuration
+uv run hs-agent config
 
-    # Classify product
-    result = await classifier.classify("Laptop computer Intel processor")
-
-    print(f"Final Classification: {result.final_code}")
-    print(f"Confidence: {result.overall_confidence:.2f}")
-
-asyncio.run(classify_with_langgraph())
+# View all settings
+uv run hs-agent config --all
 ```
 
-## Using the REST API
+## API Server
 
 ### Start the Server
 
 ```bash
-# Traditional API
-uv run python -m hs_agent.interfaces.api.traditional
+uv run hs-agent serve
 
-# LangGraph API
-uv run python -m hs_agent.interfaces.api.langgraph
+# With auto-reload for development
+uv run hs-agent serve --reload
+
+# Custom port
+uv run hs-agent serve --port 8080
 ```
 
-### Make API Calls
+### Using the API
+
+```bash
+# Classify via API
+curl -X POST "http://localhost:8000/api/classify" \
+  -H "Content-Type: application/json" \
+  -d '{"product_description": "laptop computer"}'
+```
+
+### Web UI
+
+Open your browser to:
+- **Main UI**: http://localhost:8000/classify
+- **Multi-Path**: http://localhost:8000/classify-multi
+- **API Docs**: http://localhost:8000/docs
+
+## Python Usage
 
 ```python
-import requests
+import asyncio
+from hs_agent.agent import HSAgent
+from hs_agent.data_loader import HSDataLoader
 
-# Classification request
-response = requests.post(
-    "http://localhost:8000/classify",
-    json={
-        "product_description": "Fresh apples from Washington state",
-        "top_k": 5
-    }
-)
+async def classify_product():
+    # Initialize data loader
+    loader = HSDataLoader()
+    loader.load_all_data()
+    
+    # Create agent
+    agent = HSAgent(loader)
+    
+    # Classify product
+    result = await agent.classify("laptop computer")
+    
+    print(f"HS Code: {result.final_code}")
+    print(f"Confidence: {result.overall_confidence:.2%}")
 
-result = response.json()
-print(f"HS Code: {result['final_code']}")
-```
-
-### Using curl
-
-```bash
-curl -X POST "http://localhost:8000/classify" \
-     -H "Content-Type: application/json" \
-     -d '{"product_description": "Cotton t-shirt for men", "top_k": 3}'
-```
-
-## Using the CLI
-
-### Interactive Mode
-
-```bash
-# Traditional CLI
-uv run python -m hs_agent.interfaces.cli.traditional
-
-# LangGraph CLI
-uv run python -m hs_agent.interfaces.cli.langgraph
-```
-
-### Batch Processing
-
-```bash
-# Process CSV file
-uv run python -m hs_agent.interfaces.cli.traditional \
-    --batch input.csv \
-    --output results.csv
-```
-
-## Example Outputs
-
-### Successful Classification
-
-```json
-{
-  "final_code": "010111",
-  "final_description": "Horses; live, pure-bred breeding animals",
-  "overall_confidence": 0.92,
-  "reasoning": "The product is specifically described as a pure-bred Arabian mare for breeding, which directly matches HS code 010111 for pure-bred breeding horses.",
-  "classification_path": {
-    "2_digit": {"code": "01", "confidence": 0.98},
-    "4_digit": {"code": "0101", "confidence": 0.95},
-    "6_digit": {"code": "010111", "confidence": 0.92}
-  }
-}
-```
-
-### Error Handling
-
-```json
-{
-  "error": "Classification failed",
-  "message": "Unable to determine appropriate HS code",
-  "suggestions": [
-    "Provide more specific product details",
-    "Check product description for accuracy"
-  ]
-}
+asyncio.run(classify_product())
 ```
 
 ## Next Steps
 
-- Explore the [User Guide](../user-guide/overview.md) for detailed usage
-- Review [API Reference](../api-reference/core/data-loader.md) for advanced features
-- Check out [Examples](../examples/basic-classification.md) for more use cases
+- [Full CLI Documentation](../user-guide/cli-usage.md)
+- [Configuration Guide](configuration.md)
+- [System Overview](../user-guide/overview.md)

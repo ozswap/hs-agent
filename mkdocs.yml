@@ -1,5 +1,5 @@
 site_name: HS Agent Documentation
-site_description: Comprehensive documentation for HS Code Classification Agent
+site_description: AI-powered HS code classification service
 site_author: HS Agent Team
 site_url: https://example.com/hs-agent
 
@@ -9,14 +9,14 @@ repo_url: https://github.com/your-org/hs-agent
 theme:
   name: material
   palette:
-    # Palette toggle for light mode
+    # Light mode
     - scheme: default
       primary: indigo
       accent: indigo
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    # Palette toggle for dark mode
+    # Dark mode
     - scheme: slate
       primary: indigo
       accent: indigo
@@ -34,31 +34,13 @@ theme:
 
 plugins:
   - search
-  - autorefs
-  - mkdocstrings:
-      handlers:
-        python:
-          options:
-            docstring_style: numpy
-            docstring_options:
-              ignore_init_summary: true
-            merge_init_into_class: true
-            show_signature_annotations: true
-            show_source: false
-            extra:
-              show_bases: true
-              show_inheritance_diagram: false
 
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.superfences
   - admonition
   - pymdownx.details
   - pymdownx.tabbed:
@@ -74,36 +56,9 @@ nav:
     - Configuration: getting-started/configuration.md
   - User Guide:
     - Overview: user-guide/overview.md
-    - Traditional Agents: user-guide/traditional-agents.md
-    - LangGraph Agents: user-guide/langgraph-agents.md
-    - API Usage: user-guide/api-usage.md
     - CLI Usage: user-guide/cli-usage.md
-  - Architecture:
-    - System Design: architecture/system-design.md
-    - Refactored Structure: architecture/refactored-structure.md
-    - Data Models: architecture/data-models.md
-    - Agent Framework: architecture/agent-framework.md
-    - Workflows: architecture/workflows.md
-  - API Reference:
-    - Core:
-      - Data Loader: api-reference/core/data-loader.md
-      - Models: api-reference/core/models.md
-      - Configuration: api-reference/core/configuration.md
-      - Exceptions: api-reference/core/exceptions.md
-    - Agents:
-      - Traditional: api-reference/agents/traditional.md
-      - LangGraph: api-reference/agents/langgraph.md
-    - Interfaces:
-      - API: api-reference/interfaces/api.md
-      - CLI: api-reference/interfaces/cli.md
-  - Examples:
-    - Basic Classification: examples/basic-classification.md
-    - Advanced Workflows: examples/advanced-workflows.md
-    - Custom Agents: examples/custom-agents.md
-  - Development:
-    - Contributing: development/contributing.md
-    - Testing: development/testing.md
-    - Deployment: development/deployment.md
+  - Technical Details:
+    - Wide Net Classification: wide_net_classification_explained.md
 
 extra:
   social:

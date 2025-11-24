@@ -1,181 +1,103 @@
 # CLI Usage Guide
 
-## Overview
+Complete guide to the `hs-agent` command-line interface.
 
-HS Agent provides a unified, beautiful command-line interface that replaces the previous scattered CLI commands. The new `hs-agent` command offers a consistent experience with rich formatting, progress indicators, and comprehensive help.
-
-## 🚀 Quick Start
-
-### Basic Classification
+## Quick Start
 
 ```bash
-# Classify a product description
-hs-agent classify "Laptop computer with 16GB RAM and 512GB SSD"
+# Classify a product
+uv run hs-agent classify "laptop computer"
 
-# Use specific agent type
-hs-agent classify "Cotton t-shirt, size medium" --agent langgraph
-
-# Adjust number of candidates considered
-hs-agent classify "Fresh apples from Washington state" --top-k 5
-
-# Enable verbose output
-hs-agent classify "Smartphone with 128GB storage" --verbose
-```
-
-### System Management
-
-```bash
 # Check system health
-hs-agent health
+uv run hs-agent health
 
 # View configuration
-hs-agent config
-
-# View all configuration options
-hs-agent config --all
-
-# Show version information
-hs-agent version
+uv run hs-agent config
 ```
 
-## 📋 Command Reference
+## Commands
 
 ### `hs-agent classify`
 
-Classify a product description into an HS code using hierarchical AI classification.
+Classify a product description into an HS code.
 
 ```bash
-hs-agent classify [OPTIONS] PRODUCT_DESCRIPTION
+uv run hs-agent classify [OPTIONS] PRODUCT_DESCRIPTION
 ```
 
-#### Arguments
-
-| Argument | Type | Required | Description |
-|----------|------|----------|-------------|
-| `PRODUCT_DESCRIPTION` | string | ✅ | Product description to classify |
-
-#### Options
-
-| Option | Short | Type | Default | Description |
-|--------|-------|------|---------|-------------|
-| `--agent` | `-a` | choice | `langgraph` | Agent type (`traditional` or `langgraph`) |
-| `--top-k` | `-k` | integer | `10` | Number of candidates to consider (1-50) |
-| `--verbose` | `-v` | flag | `false` | Enable verbose output |
-| `--help` | | flag | | Show help message |
-
-#### Examples
-
-```bash
-# Basic classification
-hs-agent classify "Laptop computer"
-
-# Use traditional agent
-hs-agent classify "Cotton shirt" --agent traditional
-
-# Consider more candidates
-hs-agent classify "Electronic device" --top-k 15
-
-# Verbose output with detailed information
-hs-agent classify "Industrial machinery" --verbose
-
-# Complex product description
-hs-agent classify "Portable digital automatic data processing machine weighing 2.5kg with 16GB RAM, 512GB SSD, and 15.6-inch display"
-```
-
-#### Output Format
-
-The classify command provides rich, formatted output:
-
-```
-🎯 HS Classification Result
-┌─────────────────────────────────────────────────────────────┐
-│ ✅ Classification Complete                                   │
-│                                                             │
-│ Product: Laptop computer with 16GB RAM and 512GB SSD       │
-│ Final HS Code: 847130                                       │
-│ Confidence: 95.2%                                           │
-│ Processing Time: 2.45s                                      │
-└─────────────────────────────────────────────────────────────┘
-
-📊 Hierarchical Classification Breakdown
-┌─────────────────┬─────────┬────────────┬──────────────────────┐
-│ Level           │ Code    │ Confidence │ Reasoning            │
-├─────────────────┼─────────┼────────────┼──────────────────────┤
-│ Chapter (2-digit)│ 84      │ 92.0%      │ Machinery and mech...│
-│ Heading (4-digit)│ 8471    │ 94.5%      │ Data processing ma...│
-│ Subheading (6-digit)│ 847130 │ 95.2%   │ Portable computers...│
-└─────────────────┴─────────┴────────────┴──────────────────────┘
-```
-
-### `hs-agent config`
-
-Display current configuration settings with masked sensitive values.
-
-```bash
-hs-agent config [OPTIONS]
-```
-
-#### Options
+**Options:**
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `--all` | flag | `false` | Show all configuration values |
-| `--help` | flag | | Show help message |
+| `--top-k` | integer | `10` | Number of candidates (1-50) |
+| `--verbose` | flag | `false` | Enable verbose output |
+| `--local` | flag | `false` | Force local mode (bypass API) |
 
-#### Examples
+**Examples:**
 
 ```bash
-# Show basic configuration
-hs-agent config
+# Basic classification
+uv run hs-agent classify "laptop computer"
 
-# Show all configuration options
-hs-agent config --all
+# Adjust candidates considered
+uv run hs-agent classify "cotton shirt" --top-k 15
+
+# Verbose output with details
+uv run hs-agent classify "industrial machinery" --verbose
+
+# Force local processing
+uv run hs-agent classify "fresh apples" --local
 ```
 
-#### Output Format
+### `hs-agent serve`
 
+Start the API server.
+
+```bash
+uv run hs-agent serve [OPTIONS]
 ```
-⚙️ HS Agent Configuration
 
-Current Settings
-┌─────────────────────┬──────────────────────┬─────────────┐
-│ Setting             │ Value                │ Source      │
-├─────────────────────┼──────────────────────┼─────────────┤
-│ Default Agent Type  │ langgraph            │ config      │
-│ Default Model       │ gemini-2.5-flash│ config      │
-│ Data Directory      │ /path/to/data        │ config      │
-│ Log Level           │ INFO                 │ config      │
-│ Google API Key      │ AIzaSyAb****xyz     │ environment │
-│ Langfuse Enabled    │ ✅ Yes               │ config      │
-│ Langfuse Host       │ https://cloud.lang...│ environment │
-└─────────────────────┴──────────────────────┴─────────────┘
+**Options:**
 
-💡 Use --all to see all configuration options
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `--host` | string | `0.0.0.0` | Server host |
+| `--port` | integer | `8000` | Server port |
+| `--reload` | flag | `false` | Auto-reload on changes |
+
+**Examples:**
+
+```bash
+# Start server
+uv run hs-agent serve
+
+# Development mode with auto-reload
+uv run hs-agent serve --reload
+
+# Custom port
+uv run hs-agent serve --port 8080
 ```
+
+Access the interfaces:
+- Web UI: http://localhost:8000/classify
+- API Docs: http://localhost:8000/docs
+- Multi-Path UI: http://localhost:8000/classify-multi
 
 ### `hs-agent health`
 
-Perform comprehensive health checks on the HS Agent system.
+Run system health checks.
 
 ```bash
-hs-agent health
+uv run hs-agent health
 ```
 
-#### Health Checks Performed
+Checks:
+- Configuration validity
+- Data file accessibility
+- Agent initialization
+- Service connectivity
 
-1. **Configuration Validation**: Verify all required settings
-2. **Data File Accessibility**: Check HS codes and examples files
-3. **Agent Initialization**: Test agent creation and setup
-4. **External Service Connectivity**: Verify API access (if configured)
-
-#### Examples
-
-```bash
-# Run health check
-hs-agent health
-```
-
-#### Output Format
+**Example output:**
 
 ```
 🏥 HS Agent Health Check
@@ -187,75 +109,75 @@ hs-agent health
 🎉 All systems operational!
 ```
 
-### `hs-agent version`
+### `hs-agent config`
 
-Display version and build information.
-
-```bash
-hs-agent version
-```
-
-#### Output Format
-
-```
-HS Agent v0.1.0
-Configuration: langgraph agent
-Model: gemini-2.5-flash
-```
-
-## 🎨 Rich Terminal Features
-
-### Progress Indicators
-
-The CLI provides beautiful progress indicators during long operations:
+Display configuration settings.
 
 ```bash
-hs-agent classify "Complex product description"
+uv run hs-agent config [--all]
 ```
 
-```
-📊 Loading HS codes data... ⠋
-🤖 Initializing langgraph agent... ⠙
-🔍 Classifying product... ⠹
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--all` | Show all configuration values |
+
+**Examples:**
+
+```bash
+# Show basic configuration
+uv run hs-agent config
+
+# Show all settings
+uv run hs-agent config --all
 ```
 
-### Color-Coded Output
+## Output Format
 
-- 🟢 **Green**: Success messages and positive results
-- 🔴 **Red**: Error messages and failures
-- 🟡 **Yellow**: Warnings and important notices
+### Classification Results
+
+The CLI provides rich, formatted output:
+
+```
+🎯 HS Classification Result
+┌─────────────────────────────────────────────┐
+│ ✅ Classification Complete                   │
+│                                             │
+│ Product: Laptop computer                    │
+│ Final HS Code: 847130                       │
+│ Confidence: 95.2%                           │
+└─────────────────────────────────────────────┘
+
+📊 Hierarchical Breakdown
+• Chapter (84): Machinery - 92.0%
+• Heading (8471): Data processing - 94.5%
+• Subheading (847130): Portable computers - 95.2%
+```
+
+### Color Coding
+
+- 🟢 **Green**: Success and high confidence
+- 🔴 **Red**: Errors and failures
+- 🟡 **Yellow**: Warnings and medium confidence
 - 🔵 **Blue**: Information and headers
-- ⚪ **Gray**: Secondary information and details
 
-### Interactive Help
+## Advanced Usage
 
-```bash
-# Get help for main command
-hs-agent --help
-
-# Get help for specific subcommand
-hs-agent classify --help
-hs-agent config --help
-hs-agent health --help
-```
-
-## 🔧 Advanced Usage
-
-### Environment-Specific Configuration
+### Environment Configuration
 
 ```bash
-# Development environment
+# Development
 export DEBUG_MODE=true
 export LOG_LEVEL=DEBUG
-hs-agent classify "test product" --verbose
+uv run hs-agent classify "test product" --verbose
 
-# Production environment
+# Production
 export LOG_LEVEL=INFO
-export MAX_CONCURRENT_REQUESTS=20
-hs-agent classify "production product"
+uv run hs-agent classify "product"
 ```
 
-### Batch Processing with Shell Scripts
+### Batch Processing
 
 ```bash
 #!/bin/bash
@@ -265,152 +187,83 @@ products=(
     "Laptop computer"
     "Cotton t-shirt"
     "Fresh apples"
-    "Smartphone"
 )
 
 for product in "${products[@]}"; do
     echo "Classifying: $product"
-    hs-agent classify "$product" --agent langgraph
+    uv run hs-agent classify "$product"
     echo "---"
 done
 ```
 
-### Integration with Other Tools
+### Output Redirection
 
 ```bash
-# Pipe output to file
-hs-agent classify "Product description" > classification_result.txt
+# Save to file
+uv run hs-agent classify "product" > result.txt
 
-# Use with jq for JSON processing (if JSON output is added)
-hs-agent classify "Product" --format json | jq '.final_hs_code'
-
-# Integration with monitoring
-hs-agent health && echo "System healthy" || echo "System issues detected"
+# Check health status
+uv run hs-agent health && echo "OK" || echo "FAILED"
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### Common Issues
+### Command Not Found
 
-#### 1. Command Not Found
-
-**Error**: `hs-agent: command not found`
-
-**Solution**:
 ```bash
-# Install the package
-pip install -e .
-
-# Or use uv
+# Reinstall
 uv sync
 
 # Verify installation
 which hs-agent
 ```
 
-#### 2. Configuration Errors
+### Configuration Errors
 
-**Error**: `ConfigurationError: Google API key must be provided`
-
-**Solution**:
 ```bash
-# Set required environment variables
-export GOOGLE_API_KEY="your-api-key"
-
-# Or create .env file
-echo "GOOGLE_API_KEY=your-api-key" > .env
+# Check authentication
+gcloud auth application-default login
 
 # Verify configuration
-hs-agent config
+uv run hs-agent config --all
+
+# Run health check
+uv run hs-agent health
 ```
 
-#### 3. Data Loading Errors
+### Data Loading Errors
 
-**Error**: `DataLoadingError: HS codes file not found`
-
-**Solution**:
 ```bash
-# Check data directory exists
-ls -la data/
-
-# Verify required files
+# Check data files exist
 ls -la data/hs_codes_all.csv
 ls -la data/hs6_examples_cleaned.csv
 
-# Run health check
-hs-agent health
-```
-
-#### 4. Agent Initialization Errors
-
-**Error**: `AgentError: Failed to initialize langgraph agent`
-
-**Solution**:
-```bash
-# Check API key is valid
-hs-agent health
-
-# Try different agent type
-hs-agent classify "test" --agent traditional
-
-# Enable debug mode
-export DEBUG_MODE=true
-hs-agent classify "test" --verbose
+# Run health check for details
+uv run hs-agent health
 ```
 
 ### Debug Mode
 
-Enable debug mode for detailed troubleshooting:
-
 ```bash
+# Enable detailed logging
 export DEBUG_MODE=true
 export LOG_LEVEL=DEBUG
-hs-agent classify "test product" --verbose
+uv run hs-agent classify "test" --verbose
 ```
 
-### Getting Help
+## Getting Help
 
 ```bash
 # General help
-hs-agent --help
+uv run hs-agent --help
 
 # Command-specific help
-hs-agent classify --help
-
-# Check system status
-hs-agent health
-
-# View configuration
-hs-agent config --all
+uv run hs-agent classify --help
+uv run hs-agent serve --help
 ```
 
-## 🔄 Migration from Legacy Commands
+## Next Steps
 
-### Command Mapping
-
-| Legacy Command | New Unified Command |
-|----------------|-------------------|
-| `hs-classify "product"` | `hs-agent classify "product" --agent traditional` |
-| `hs-langgraph-classify "product"` | `hs-agent classify "product" --agent langgraph` |
-| `hs-api` | Use FastAPI directly or new API interface |
-| `hs-langgraph-api` | Use FastAPI directly or new API interface |
-
-### Migration Script
-
-```bash
-#!/bin/bash
-# migrate_commands.sh
-
-# Replace legacy commands in scripts
-sed -i 's/hs-classify/hs-agent classify --agent traditional/g' *.sh
-sed -i 's/hs-langgraph-classify/hs-agent classify --agent langgraph/g' *.sh
-
-echo "Migration complete. Please review and test your scripts."
-```
-
-## 📚 Related Documentation
-
-- [Configuration Guide](../getting-started/configuration.md) - Detailed configuration options
-- [API Usage](api-usage.md) - REST API interface
-- [Quick Start](../getting-started/quickstart.md) - Getting started guide
-- [Refactored Structure](../architecture/refactored-structure.md) - Architecture overview
+- [Configuration Guide](../getting-started/configuration.md)
+- [System Overview](overview.md)
+- [Quick Start](../getting-started/quickstart.md)
