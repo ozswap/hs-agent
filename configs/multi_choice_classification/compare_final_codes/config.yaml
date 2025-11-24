@@ -1,0 +1,29 @@
+model:
+  name: gemini-2.5-flash
+  parameters:
+    temperature: 0.1
+    
+    
+    thinking_budget: 0
+prompts:
+  system: prompts/system.md
+  user: prompts/user.md
+
+output_schema:
+  title: "FinalComparisonOutput"
+  description: prompts/output_schema.md
+  type: "object"
+  properties:
+    selected_code:
+      type: "string"
+      description: "The single best HS code selected from all evaluated paths"
+    confidence:
+      type: "number"
+      description: "Confidence score for the final selection (0.0 to 1.0)"
+    reasoning:
+      type: "string"
+      description: "Detailed reasoning explaining why this code was selected over alternatives"
+    comparison_summary:
+      type: "string"
+      description: "Summary of how the different classification paths were compared and evaluated"
+  required: ["selected_code", "confidence", "reasoning", "comparison_summary"]

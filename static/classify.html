@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single Classification - HS Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .confidence-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content p {
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-left: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content strong {
+            font-weight: 600;
+        }
+        .markdown-content code {
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-size: 0.875em;
+        }
+        /* Tree Visualization Styles */
+        #tree-container {
+            width: 100%;
+            overflow-x: auto;
+            background: white;
+            border-radius: 0.5rem;
+        }
+        .tree-node {
+            cursor: pointer;
+        }
+        .tree-node circle {
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+        }
+        .tree-node.selected circle {
+            fill: #10b981;
+            stroke: #059669;
+        }
+        .tree-node.explored circle {
+            fill: #93c5fd;
+            stroke: #60a5fa;
+        }
+        .tree-node:hover circle {
+            stroke-width: 3px;
+            filter: brightness(1.1);
+        }
+        .tree-node text {
+            font-size: 11px;
+            font-weight: 600;
+            pointer-events: none;
+        }
+        .tree-link {
+            fill: none;
+            stroke: #9ca3af;
+            stroke-width: 2px;
+        }
+        .tree-link.selected {
+            stroke: #10b981;
+            stroke-width: 3px;
+        }
+        .tree-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .tree-tooltip .tooltip-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .tree-tooltip .tooltip-confidence {
+            color: #10b981;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="gradient-bg text-white py-4 shadow-lg">
+        <div class="container mx-auto px-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold">Single Classification</h1>
+                <p class="text-gray-200 text-sm">One-to-one HS code mapping</p>
+            </div>
+            <a href="/" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition">
+                � Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <div class="grid lg:grid-cols-2 gap-8">
+            <!-- Input Form -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Product Information</h2>
+
+                <form id="classifyForm" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Product Description *
+                        </label>
+                        <textarea
+                            id="productDescription"
+                            rows="4"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            placeholder="e.g., Laptop computer with 15-inch screen, Intel processor, 16GB RAM"
+                            required
+                        ></textarea>
+                        <p class="text-xs text-gray-500 mt-1">Be as descriptive as possible for accurate classification</p>
+                    </div>
+
+                    <!-- High Performance Mode Toggle -->
+                    <div class="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                        <div class="flex items-center justify-between mb-2">
+                            <label class="flex items-center cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    id="highPerformance"
+                                    class="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500"
+                                    onchange="toggleMaxSelections()"
+                                />
+                                <span class="ml-2 text-sm font-semibold text-gray-700">🚀 High Performance Mode</span>
+                            </label>
+                        </div>
+                        <p class="text-xs text-gray-600 mb-3">
+                            Explores multiple paths with chapter notes for highest accuracy (slower but more thorough)
+                        </p>
+
+                        <!-- Max Selections (conditional) -->
+                        <div id="maxSelectionsContainer" class="hidden">
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Max Paths to Explore
+                            </label>
+                            <input
+                                type="number"
+                                id="maxSelections"
+                                value="3"
+                                min="1"
+                                max="10"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            />
+                            <p class="text-xs text-gray-500 mt-1">Number of paths to explore at each level (default: 3)</p>
+                        </div>
+                    </div>
+
+                    <button
+                        type="submit"
+                        id="submitBtn"
+                        class="w-full bg-purple-600 text-white py-3 rounded-lg font-semibold hover:bg-purple-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        Classify Product
+                    </button>
+                </form>
+
+                <!-- Loading State -->
+                <div id="loading" class="hidden mt-6 text-center">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+                    <p class="text-gray-600 mt-2">Analyzing product...</p>
+                </div>
+
+                <!-- Error Message -->
+                <div id="error" class="hidden mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
+            </div>
+
+            <!-- Results Panel -->
+            <div id="resultsPanel" class="hidden bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">Classification Results</h2>
+                    <button onclick="copyResult()" class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-lg transition">
+                        =� Copy
+                    </button>
+                </div>
+
+                <div id="results"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('classifyForm');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const resultsPanel = document.getElementById('resultsPanel');
+        const results = document.getElementById('results');
+        const submitBtn = document.getElementById('submitBtn');
+
+        let currentResult = null;
+
+        function toggleMaxSelections() {
+            const highPerformance = document.getElementById('highPerformance').checked;
+            const maxSelectionsContainer = document.getElementById('maxSelectionsContainer');
+
+            if (highPerformance) {
+                maxSelectionsContainer.classList.remove('hidden');
+            } else {
+                maxSelectionsContainer.classList.add('hidden');
+            }
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const productDescription = document.getElementById('productDescription').value;
+            const highPerformance = document.getElementById('highPerformance').checked;
+            const maxSelections = highPerformance ? parseInt(document.getElementById('maxSelections').value) : 3;
+
+            // Reset UI
+            error.classList.add('hidden');
+            resultsPanel.classList.add('hidden');
+            loading.classList.remove('hidden');
+            submitBtn.disabled = true;
+
+            try {
+                const requestBody = {
+                    product_description: productDescription,
+                    high_performance: highPerformance
+                };
+
+                if (highPerformance) {
+                    requestBody.max_selections = maxSelections;
+                }
+
+                const response = await fetch('/api/classify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                currentResult = await response.json();
+                displayResults(currentResult);
+
+            } catch (err) {
+                error.textContent = `Error: ${err.message}`;
+                error.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            const getConfidenceColor = (conf) => {
+                if (conf >= 0.8) return 'bg-green-500';
+                if (conf >= 0.6) return 'bg-yellow-500';
+                return 'bg-red-500';
+            };
+
+            const confidencePercent = (conf) => (conf * 100).toFixed(1);
+
+            const isHighPerformance = data.paths_explored && data.paths_explored.length > 0;
+
+            results.innerHTML = `
+                <!-- Mode Badge -->
+                ${isHighPerformance ? `
+                    <div class="mb-4 flex items-center gap-2">
+                        <span class="bg-purple-100 text-purple-800 text-xs px-3 py-1 rounded-full font-bold">
+                            🚀 HIGH PERFORMANCE MODE
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            Explored ${data.paths_explored.length} path(s) with chapter notes
+                        </span>
+                    </div>
+                ` : ''}
+
+                <!-- Final HS Code Highlight -->
+                <div class="bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg p-6 mb-6">
+                    <p class="text-sm opacity-90 mb-1">Final HS Code</p>
+                    <p class="text-4xl font-bold">${data.final_code}</p>
+                    <p class="text-sm mt-2">Overall Confidence: ${confidencePercent(data.overall_confidence)}%</p>
+                </div>
+
+                <!-- High Performance Results -->
+                ${isHighPerformance && data.comparison_summary ? `
+                    <div class="border border-purple-200 rounded-lg p-4 mb-6 bg-purple-50">
+                        <h3 class="text-sm font-bold text-purple-900 mb-2">📋 Comparison Summary</h3>
+                        <p class="text-sm text-gray-700">${data.comparison_summary}</p>
+
+                        ${data.comparison_reasoning ? `
+                            <details class="mt-3">
+                                <summary class="cursor-pointer text-sm font-semibold text-purple-700 hover:text-purple-900">
+                                    View Detailed Reasoning (with Chapter Notes)
+                                </summary>
+                                <div class="mt-2 text-sm text-gray-700 bg-white p-3 rounded markdown-content" id="comparison-reasoning"></div>
+                            </details>
+                        ` : ''}
+                    </div>
+                ` : ''}
+
+                <!-- Hierarchical Path -->
+                <div class="space-y-4">
+                    <!-- Chapter -->
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex-1">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Chapter (2-digit)</span>
+                                <p class="text-xl font-bold text-gray-800">${data.chapter.selected_code}</p>
+                                <p class="text-sm text-gray-600 mt-1">${data.chapter.description}</p>
+                            </div>
+                            <div class="text-right ml-4">
+                                <span class="text-xs text-gray-500">Confidence</span>
+                                <p class="text-lg font-semibold ${data.chapter.confidence >= 0.8 ? 'text-green-600' : data.chapter.confidence >= 0.6 ? 'text-yellow-600' : 'text-red-600'}">
+                                    ${confidencePercent(data.chapter.confidence)}%
+                                </p>
+                            </div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-3">
+                            <div class="confidence-bar ${getConfidenceColor(data.chapter.confidence)} h-2 rounded-full" style="width: ${confidencePercent(data.chapter.confidence)}%"></div>
+                        </div>
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                            <div class="mt-2 text-gray-700 bg-gray-50 p-3 rounded markdown-content" id="chapter-reasoning"></div>
+                        </details>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div class="flex justify-center">
+                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                        </svg>
+                    </div>
+
+                    <!-- Heading -->
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex-1">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Heading (4-digit)</span>
+                                <p class="text-xl font-bold text-gray-800">${data.heading.selected_code}</p>
+                                <p class="text-sm text-gray-600 mt-1">${data.heading.description}</p>
+                            </div>
+                            <div class="text-right ml-4">
+                                <span class="text-xs text-gray-500">Confidence</span>
+                                <p class="text-lg font-semibold ${data.heading.confidence >= 0.8 ? 'text-green-600' : data.heading.confidence >= 0.6 ? 'text-yellow-600' : 'text-red-600'}">
+                                    ${confidencePercent(data.heading.confidence)}%
+                                </p>
+                            </div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-3">
+                            <div class="confidence-bar ${getConfidenceColor(data.heading.confidence)} h-2 rounded-full" style="width: ${confidencePercent(data.heading.confidence)}%"></div>
+                        </div>
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                            <div class="mt-2 text-gray-700 bg-gray-50 p-3 rounded markdown-content" id="heading-reasoning"></div>
+                        </details>
+                    </div>
+
+                    <!-- Arrow -->
+                    <div class="flex justify-center">
+                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path>
+                        </svg>
+                    </div>
+
+                    <!-- Subheading -->
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="flex-1">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Subheading (6-digit)</span>
+                                <p class="text-xl font-bold text-gray-800">${data.subheading.selected_code}</p>
+                                <p class="text-sm text-gray-600 mt-1">${data.subheading.description}</p>
+                            </div>
+                            <div class="text-right ml-4">
+                                <span class="text-xs text-gray-500">Confidence</span>
+                                <p class="text-lg font-semibold ${data.subheading.confidence >= 0.8 ? 'text-green-600' : data.subheading.confidence >= 0.6 ? 'text-yellow-600' : 'text-red-600'}">
+                                    ${confidencePercent(data.subheading.confidence)}%
+                                </p>
+                            </div>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2 mb-3">
+                            <div class="confidence-bar ${getConfidenceColor(data.subheading.confidence)} h-2 rounded-full" style="width: ${confidencePercent(data.subheading.confidence)}%"></div>
+                        </div>
+                        <details class="text-sm">
+                            <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                            <div class="mt-2 text-gray-700 bg-gray-50 p-3 rounded markdown-content" id="subheading-reasoning"></div>
+                        </details>
+                    </div>
+                </div>
+
+                <!-- Tree Visualization (High Performance Mode Only) -->
+                ${isHighPerformance && data.paths_explored && data.paths_explored.length > 1 ? `
+                    <div class="mt-6 border border-purple-200 rounded-lg p-4 bg-white">
+                        <h3 class="text-sm font-bold text-gray-800 mb-3">🌳 Path Exploration Tree</h3>
+                        <p class="text-xs text-gray-600 mb-4">Visual representation of explored classification paths. Green nodes show the selected path, blue nodes show alternatives explored.</p>
+                        <div id="tree-container"></div>
+                    </div>
+                ` : ''}
+
+                <!-- Explored Paths (High Performance Mode Only) -->
+                ${isHighPerformance && data.paths_explored && data.paths_explored.length > 1 ? `
+                    <details class="mt-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <summary class="cursor-pointer text-sm font-bold text-gray-700 hover:text-gray-900">
+                            🔍 View All Explored Paths (${data.paths_explored.length} total)
+                        </summary>
+                        <div class="mt-4 space-y-3">
+                            ${data.paths_explored.map((path, idx) => `
+                                <div class="bg-white rounded-lg p-3 border ${path.subheading_code === data.final_code ? 'border-purple-500 border-2' : 'border-gray-200'}">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <span class="text-xs font-bold text-gray-500">Path ${idx + 1}</span>
+                                        ${path.subheading_code === data.final_code ? '<span class="text-xs bg-purple-500 text-white px-2 py-1 rounded-full">✓ SELECTED</span>' : ''}
+                                    </div>
+                                    <p class="text-sm font-semibold text-gray-800">${path.chapter_code} → ${path.heading_code} → ${path.subheading_code}</p>
+                                    <p class="text-xs text-gray-600 mt-1">${path.subheading_description}</p>
+                                    <p class="text-xs text-gray-500 mt-1">Confidence: ${confidencePercent(path.path_confidence)}%</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </details>
+                ` : ''}
+
+                <!-- Metadata -->
+                <div class="mt-6 pt-4 border-t border-gray-200 text-sm text-gray-500">
+                    <p>Processing Time: ${data.processing_time_ms.toFixed(0)}ms</p>
+                    ${isHighPerformance ? '<p class="mt-1">Mode: High Performance (Wide Net + Chapter Notes)</p>' : '<p class="mt-1">Mode: Standard (Fast One-Shot)</p>'}
+                </div>
+            `;
+
+            resultsPanel.classList.remove('hidden');
+
+            // Render markdown for reasoning sections
+            setTimeout(() => {
+                const chapterReasoning = document.getElementById('chapter-reasoning');
+                const headingReasoning = document.getElementById('heading-reasoning');
+                const subheadingReasoning = document.getElementById('subheading-reasoning');
+                const comparisonReasoning = document.getElementById('comparison-reasoning');
+
+                if (chapterReasoning) {
+                    chapterReasoning.innerHTML = marked.parse(data.chapter.reasoning);
+                }
+                if (headingReasoning) {
+                    headingReasoning.innerHTML = marked.parse(data.heading.reasoning);
+                }
+                if (subheadingReasoning) {
+                    subheadingReasoning.innerHTML = marked.parse(data.subheading.reasoning);
+                }
+                if (comparisonReasoning && data.comparison_reasoning) {
+                    comparisonReasoning.innerHTML = marked.parse(data.comparison_reasoning);
+                }
+
+                // Render tree visualization if in high performance mode
+                if (isHighPerformance && data.paths_explored && data.paths_explored.length > 1) {
+                    renderTreeVisualization(data);
+                }
+            }, 0);
+        }
+
+        function buildTreeData(data) {
+            // Build hierarchical tree structure from paths_explored
+            const finalCode = data.final_code;
+            
+            // Root node - product description
+            const root = {
+                name: 'Description',
+                code: '',
+                description: data.product_description.substring(0, 40) + '...',
+                layer: 'Description',
+                isSelected: true,
+                children: []
+            };
+
+            // Group paths by chapter
+            const chapterMap = new Map();
+            data.paths_explored.forEach(path => {
+                if (!chapterMap.has(path.chapter_code)) {
+                    chapterMap.set(path.chapter_code, {
+                        name: path.chapter_code,
+                        code: path.chapter_code,
+                        description: path.chapter_description,
+                        layer: 'Chapter',
+                        isSelected: path.subheading_code === finalCode,
+                        confidence: path.path_confidence,
+                        children: []
+                    });
+                }
+                
+                const chapter = chapterMap.get(path.chapter_code);
+                
+                // Group by heading within chapter
+                let heading = chapter.children.find(h => h.code === path.heading_code);
+                if (!heading) {
+                    heading = {
+                        name: path.heading_code,
+                        code: path.heading_code,
+                        description: path.heading_description,
+                        layer: 'Heading',
+                        isSelected: path.subheading_code === finalCode,
+                        confidence: path.path_confidence,
+                        children: []
+                    };
+                    chapter.children.push(heading);
+                }
+                
+                // Add subheading
+                heading.children.push({
+                    name: path.subheading_code,
+                    code: path.subheading_code,
+                    description: path.subheading_description,
+                    layer: 'Subheading',
+                    isSelected: path.subheading_code === finalCode,
+                    confidence: path.path_confidence
+                });
+                
+                // Update parent selection status
+                if (path.subheading_code === finalCode) {
+                    chapter.isSelected = true;
+                    heading.isSelected = true;
+                }
+            });
+
+            root.children = Array.from(chapterMap.values());
+            return root;
+        }
+
+        function renderTreeVisualization(data) {
+            const container = document.getElementById('tree-container');
+            if (!container) return;
+
+            // Clear previous content
+            container.innerHTML = '';
+
+            const treeData = buildTreeData(data);
+            
+            // Set dimensions
+            const width = container.offsetWidth || 800;
+            const height = 600;
+            const margin = { top: 50, right: 120, bottom: 20, left: 120 };
+
+            // Create SVG
+            const svg = d3.select('#tree-container')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Create tree layout
+            const treeLayout = d3.tree()
+                .size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+
+            // Create hierarchy
+            const root = d3.hierarchy(treeData);
+            const treeDataLayout = treeLayout(root);
+
+            // Add layer grouping indicators and labels FIRST (so they appear behind)
+            const layers = [
+                { name: 'Description', layer: 1 },
+                { name: 'Chapter', layer: 2 },
+                { name: 'Heading', layer: 3 },
+                { name: 'Subheading', layer: 4 }
+            ];
+            const layerWidth = (width - margin.left - margin.right) / 3;
+            const layerPositions = [0, 1, 2, 3].map(i => i * layerWidth);
+            
+            // Add background rectangles for each layer zone
+            layers.forEach((layer, i) => {
+                if (i > 0) { // Skip description layer for cleaner look
+                    svg.append('rect')
+                        .attr('x', layerPositions[i] - layerWidth / 2)
+                        .attr('y', -40)
+                        .attr('width', layerWidth)
+                        .attr('height', height - margin.top - margin.bottom + 40)
+                        .attr('fill', i % 2 === 0 ? '#f9fafb' : '#ffffff')
+                        .attr('opacity', 0.5)
+                        .attr('stroke', '#e5e7eb')
+                        .attr('stroke-width', 1)
+                        .attr('stroke-dasharray', '4,4');
+                }
+            });
+            
+            // Add layer labels with better spacing and styling
+            layers.forEach((layer, i) => {
+                const x = layerPositions[i];
+                
+                // Add layer number badge
+                svg.append('rect')
+                    .attr('x', x - 35)
+                    .attr('y', -35)
+                    .attr('width', 70)
+                    .attr('height', 24)
+                    .attr('rx', 4)
+                    .attr('fill', '#8b5cf6')
+                    .attr('opacity', 0.1);
+                
+                // Add "Layer N" text
+                svg.append('text')
+                    .attr('x', x)
+                    .attr('y', -28)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#8b5cf6')
+                    .attr('font-size', '9px')
+                    .attr('font-weight', 'bold')
+                    .text(`Layer ${layer.layer}`);
+                
+                // Add layer name
+                svg.append('text')
+                    .attr('x', x)
+                    .attr('y', -17)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#6b7280')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', '600')
+                    .text(layer.name);
+            });
+
+            // Draw links
+            svg.selectAll('.tree-link')
+                .data(treeDataLayout.links())
+                .join('path')
+                .attr('class', d => `tree-link ${d.target.data.isSelected ? 'selected' : ''}`)
+                .attr('d', d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+
+            // Create tooltip
+            const tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tree-tooltip')
+                .style('opacity', 0);
+
+            // Draw nodes
+            const nodes = svg.selectAll('.tree-node')
+                .data(treeDataLayout.descendants())
+                .join('g')
+                .attr('class', d => `tree-node ${d.data.isSelected ? 'selected' : 'explored'}`)
+                .attr('transform', d => `translate(${d.y},${d.x})`)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', 1);
+                    
+                    let tooltipContent = `<div class="tooltip-title">${d.data.name}</div>`;
+                    tooltipContent += `<div style="font-size: 10px; margin-bottom: 4px;">${d.data.layer}</div>`;
+                    if (d.data.description) {
+                        tooltipContent += `<div>${d.data.description.substring(0, 100)}${d.data.description.length > 100 ? '...' : ''}</div>`;
+                    }
+                    if (d.data.confidence !== undefined) {
+                        tooltipContent += `<div class="tooltip-confidence">Confidence: ${(d.data.confidence * 100).toFixed(1)}%</div>`;
+                    }
+                    
+                    tooltip.html(tooltipContent)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 10) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', 0);
+                });
+
+            // Add circles
+            nodes.append('circle')
+                .attr('r', d => d.data.layer === 'Description' ? 8 : 6);
+
+            // Add labels
+            nodes.append('text')
+                .attr('dy', '0.31em')
+                .attr('x', d => d.children ? -12 : 12)
+                .attr('text-anchor', d => d.children ? 'end' : 'start')
+                .text(d => d.data.name)
+                .clone(true).lower()
+                .attr('stroke', 'white')
+                .attr('stroke-width', 3);
+        }
+
+        function copyResult() {
+            if (!currentResult) return;
+
+            const text = `HS Code: ${currentResult.final_code}
+Confidence: ${(currentResult.overall_confidence * 100).toFixed(1)}%
+Chapter: ${currentResult.chapter.selected_code}
+Heading: ${currentResult.heading.selected_code}
+Subheading: ${currentResult.subheading.selected_code}`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Results copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>

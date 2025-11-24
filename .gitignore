@@ -140,5 +140,15 @@ Thumbs.db
 
 # Project specific
 *.log
-debug_*.py
-test_*.py
+
+# Output and temporary files
+output/
+*.png
+*.svg
+temp_*
+*_temp*
+
+# Keep organized scripts
+!scripts/debug/
+!scripts/testing/
+!scripts/*/

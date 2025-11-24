@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Path Classification - HS Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .confidence-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        .path-card {
+            transition: all 0.3s ease;
+        }
+        .path-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content p {
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content ul, .markdown-content ol {
+            margin-left: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .markdown-content strong {
+            font-weight: 600;
+        }
+        .markdown-content code {
+            background-color: #f3f4f6;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.25rem;
+            font-size: 0.875em;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="gradient-bg text-white py-4 shadow-lg">
+        <div class="container mx-auto px-4 flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl font-bold">Multi-Path Classification</h1>
+                <p class="text-gray-200 text-sm">Explore multiple possible HS code paths</p>
+            </div>
+            <a href="/" class="bg-white text-purple-600 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition">
+                Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <!-- Input Form -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Product Information</h2>
+
+            <form id="classifyForm" class="grid md:grid-cols-3 gap-4">
+                <div class="md:col-span-3">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Product Description *
+                    </label>
+                    <textarea
+                        id="productDescription"
+                        rows="3"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        placeholder="e.g., Child car seats and restraints"
+                        required
+                    ></textarea>
+                    <p class="text-xs text-gray-500 mt-1">Describe products that could fit multiple HS codes</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Max Selections
+                        <span class="text-xs font-normal text-gray-500">(How many to select at each level)</span>
+                    </label>
+                    <input
+                        type="number"
+                        id="maxSelections"
+                        value="3"
+                        min="1"
+                        max="10"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                    <p class="text-xs text-gray-500 mt-1">Select best 1-N codes at each level</p>
+                </div>
+
+                <div class="flex items-end">
+                    <button
+                        type="submit"
+                        id="submitBtn"
+                        class="w-full bg-indigo-600 text-white py-3 rounded-lg font-semibold hover:bg-indigo-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                        Classify Product
+                    </button>
+                </div>
+            </form>
+
+            <!-- Loading State -->
+            <div id="loading" class="hidden mt-6 text-center">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+                <p class="text-gray-600 mt-2">Analyzing multiple paths...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error" class="hidden mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg"></div>
+        </div>
+
+        <!-- Results Summary -->
+        <div id="resultsSummary" class="hidden bg-white rounded-xl shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">Classification Summary</h2>
+            <div id="summaryContent"></div>
+        </div>
+
+        <!-- Results Grid -->
+        <div id="resultsPanel" class="hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">Classification Paths</h2>
+                <div class="flex gap-2">
+                    <button onclick="downloadCSV()" class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition font-medium">
+                        📥 Download CSV
+                    </button>
+                    <button onclick="copyAllResults()" class="text-sm bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition">
+                        📋 Copy All Paths
+                    </button>
+                </div>
+            </div>
+            <div id="results" class="grid gap-6"></div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('classifyForm');
+        const loading = document.getElementById('loading');
+        const error = document.getElementById('error');
+        const resultsPanel = document.getElementById('resultsPanel');
+        const resultsSummary = document.getElementById('resultsSummary');
+        const summaryContent = document.getElementById('summaryContent');
+        const results = document.getElementById('results');
+        const submitBtn = document.getElementById('submitBtn');
+
+        let currentResult = null;
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const productDescription = document.getElementById('productDescription').value;
+            const maxSelections = parseInt(document.getElementById('maxSelections').value);
+
+            // Reset UI
+            error.classList.add('hidden');
+            resultsPanel.classList.add('hidden');
+            resultsSummary.classList.add('hidden');
+            loading.classList.remove('hidden');
+            submitBtn.disabled = true;
+
+            try {
+                const response = await fetch('/api/classify/multi', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_description: productDescription,
+                        max_selections: maxSelections
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                currentResult = await response.json();
+                displayResults(currentResult);
+
+            } catch (err) {
+                error.textContent = `Error: ${err.message}`;
+                error.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+                submitBtn.disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            const getConfidenceColor = (conf) => {
+                if (conf >= 0.8) return 'bg-green-500';
+                if (conf >= 0.6) return 'bg-yellow-500';
+                return 'bg-red-500';
+            };
+
+            const getConfidenceTextColor = (conf) => {
+                if (conf >= 0.8) return 'text-green-600';
+                if (conf >= 0.6) return 'text-yellow-600';
+                return 'text-red-600';
+            };
+
+            const confidencePercent = (conf) => (conf * 100).toFixed(1);
+
+            // Display summary
+            summaryContent.innerHTML = `
+                <div class="grid md:grid-cols-2 gap-4 text-center">
+                    <div class="bg-indigo-50 rounded-lg p-4">
+                        <p class="text-3xl font-bold text-indigo-600">${data.paths.length}</p>
+                        <p class="text-sm text-gray-600">Classification Paths</p>
+                    </div>
+                    <div class="bg-purple-50 rounded-lg p-4">
+                        <p class="text-3xl font-bold text-purple-600">${data.processing_time_ms.toFixed(0)}ms</p>
+                        <p class="text-sm text-gray-600">Processing Time</p>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 mt-4">${data.overall_strategy}</p>
+            `;
+            resultsSummary.classList.remove('hidden');
+
+            // Display all paths
+            results.innerHTML = data.paths.map((path, index) => `
+                <div class="path-card bg-white rounded-xl shadow-lg p-6 ${index === 0 ? 'border-2 border-indigo-500' : 'border border-gray-200'}">
+                    <!-- Path Header -->
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center">
+                            ${index === 0 ? '<span class="bg-indigo-500 text-white text-xs px-2 py-1 rounded mr-2">BEST MATCH</span>' : ''}
+                            <h3 class="text-lg font-bold text-gray-800">Path ${index + 1}</h3>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-2xl font-bold ${getConfidenceTextColor(path.path_confidence)}">
+                                ${confidencePercent(path.path_confidence)}%
+                            </p>
+                            <p class="text-xs text-gray-500">Confidence</p>
+                        </div>
+                    </div>
+
+                    <!-- Final HS Code -->
+                    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg p-4 mb-4">
+                        <p class="text-xs opacity-90">Final HS Code</p>
+                        <p class="text-3xl font-bold">${path.subheading_code}</p>
+                    </div>
+
+                    <!-- Hierarchical Path -->
+                    <div class="space-y-3">
+                        <!-- Chapter -->
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            <div class="mb-2">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Chapter</span>
+                                <p class="text-lg font-bold text-gray-800">${path.chapter_code}</p>
+                                <p class="text-xs text-gray-600 mt-1">${path.chapter_description}</p>
+                            </div>
+                            <details class="text-xs">
+                                <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                                <div class="mt-2 text-gray-700 markdown-content" data-reasoning-chapter="${index}"></div>
+                            </details>
+                        </div>
+
+                        <!-- Heading -->
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            <div class="mb-2">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Heading</span>
+                                <p class="text-lg font-bold text-gray-800">${path.heading_code}</p>
+                                <p class="text-xs text-gray-600 mt-1">${path.heading_description}</p>
+                            </div>
+                            <details class="text-xs">
+                                <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                                <div class="mt-2 text-gray-700 markdown-content" data-reasoning-heading="${index}"></div>
+                            </details>
+                        </div>
+
+                        <!-- Subheading -->
+                        <div class="bg-gray-50 rounded-lg p-3">
+                            <div class="mb-2">
+                                <span class="text-xs text-gray-500 uppercase font-semibold">Subheading</span>
+                                <p class="text-lg font-bold text-gray-800">${path.subheading_code}</p>
+                                <p class="text-xs text-gray-600 mt-1">${path.subheading_description}</p>
+                            </div>
+                            <details class="text-xs">
+                                <summary class="cursor-pointer text-gray-600 hover:text-gray-800 font-medium">View Reasoning</summary>
+                                <div class="mt-2 text-gray-700 markdown-content" data-reasoning-subheading="${index}"></div>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Copy Button -->
+                    <button onclick="copyPath(${index})" class="mt-4 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 rounded-lg text-sm font-medium transition">
+                        =� Copy This Path
+                    </button>
+                </div>
+            `).join('');
+
+            resultsPanel.classList.remove('hidden');
+
+            // Render markdown for all path reasoning sections
+            setTimeout(() => {
+                data.paths.forEach((path, index) => {
+                    const chapterEl = document.querySelector(`[data-reasoning-chapter="${index}"]`);
+                    const headingEl = document.querySelector(`[data-reasoning-heading="${index}"]`);
+                    const subheadingEl = document.querySelector(`[data-reasoning-subheading="${index}"]`);
+
+                    if (chapterEl) {
+                        chapterEl.innerHTML = marked.parse(path.chapter_reasoning);
+                    }
+                    if (headingEl) {
+                        headingEl.innerHTML = marked.parse(path.heading_reasoning);
+                    }
+                    if (subheadingEl) {
+                        subheadingEl.innerHTML = marked.parse(path.subheading_reasoning);
+                    }
+                });
+            }, 0);
+        }
+
+        function copyPath(index) {
+            if (!currentResult) return;
+
+            const path = currentResult.paths[index];
+            const text = `HS Code: ${path.subheading_code}
+Confidence: ${(path.path_confidence * 100).toFixed(1)}%
+Chapter: ${path.chapter_code}
+Heading: ${path.heading_code}
+Subheading: ${path.subheading_code}`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                alert(`Path ${index + 1} copied to clipboard!`);
+            });
+        }
+
+        function copyAllResults() {
+            if (!currentResult) return;
+
+            const text = currentResult.paths.map((path, index) => `Path ${index + 1}:
+HS Code: ${path.subheading_code}
+Confidence: ${(path.path_confidence * 100).toFixed(1)}%
+Chapter: ${path.chapter_code} - ${path.chapter_reasoning.substring(0, 100)}...
+Heading: ${path.heading_code} - ${path.heading_reasoning.substring(0, 100)}...
+Subheading: ${path.subheading_code} - ${path.subheading_reasoning.substring(0, 100)}...
+`).join('\n---\n\n');
+
+            navigator.clipboard.writeText(text).then(() => {
+                alert('All paths copied to clipboard!');
+            });
+        }
+
+        function downloadCSV() {
+            if (!currentResult) return;
+
+            // CSV Headers
+            const headers = [
+                'Path',
+                'Final HS Code',
+                'Path Confidence (%)',
+                'Chapter Code',
+                'Chapter Description',
+                'Chapter Reasoning',
+                'Heading Code',
+                'Heading Description',
+                'Heading Reasoning',
+                'Subheading Code',
+                'Subheading Description',
+                'Subheading Reasoning',
+                'Product Description',
+                'Processing Time (ms)'
+            ];
+
+            // Helper to escape CSV fields
+            const escapeCSV = (field) => {
+                if (field === null || field === undefined) return '';
+                const str = String(field);
+                // Escape quotes and wrap in quotes if contains comma, newline, or quote
+                if (str.includes(',') || str.includes('\n') || str.includes('"')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
+
+            // Build CSV rows
+            const rows = currentResult.paths.map((path, index) => {
+                return [
+                    index + 1,
+                    path.subheading_code,
+                    (path.path_confidence * 100).toFixed(2),
+                    path.chapter_code,
+                    path.chapter_description,
+                    path.chapter_reasoning,
+                    path.heading_code,
+                    path.heading_description,
+                    path.heading_reasoning,
+                    path.subheading_code,
+                    path.subheading_description,
+                    path.subheading_reasoning,
+                    currentResult.product_description,
+                    currentResult.processing_time_ms.toFixed(0)
+                ].map(escapeCSV).join(',');
+            });
+
+            // Combine headers and rows
+            const csv = [headers.map(escapeCSV).join(','), ...rows].join('\n');
+
+            // Create blob and download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const filename = `hs-classification-paths-${timestamp}.csv`;
+
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>

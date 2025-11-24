@@ -1,0 +1,36 @@
+model:
+  name: gemini-2.5-flash
+  parameters:
+    temperature: 0.1
+    
+    
+    thinking_budget: 0
+prompts:
+  system: prompts/system.md
+  user: prompts/user.md
+output_schema:
+  title: MultiSelectionOutput
+  description: prompts/output_schema.md
+  type: object
+  properties:
+    selections:
+      type: array
+      description: 1 to N selected HS codes with their individual confidences and reasoning
+      items:
+        type: object
+        properties:
+          code:
+            type: string
+            description: Selected HS code
+          confidence:
+            type: number
+            description: Confidence for this specific code (0.0-1.0)
+          reasoning:
+            type: string
+            description: Explanation for why this code was selected
+        required:
+        - code
+        - confidence
+        - reasoning
+  required:
+  - selections

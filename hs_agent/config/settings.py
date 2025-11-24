@@ -61,7 +61,7 @@ class HSAgentSettings(BaseSettings):
     
     # === Model Configuration ===
     default_model_name: str = Field(
-        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
         description="Default model name for classification",
         env="DEFAULT_MODEL_NAME"
     )
@@ -87,11 +87,23 @@ class HSAgentSettings(BaseSettings):
         le=50
     )
     
+    root_directory: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent,
+        description="Root directory of the project",
+        env="ROOT_DIRECTORY"
+    )
+    
     # === Data Configuration ===
     data_directory: Path = Field(
-        Path("data"),
+        default_factory=lambda: Path(__file__).parent.parent.parent / "data",
         description="Directory containing HS codes data",
         env="DATA_DIRECTORY"
+    )
+
+    config_directory: Path = Field(
+        default_factory=lambda: Path(__file__).parent.parent.parent / "configs",
+        description="Directory containing configuration files",
+        env="CONFIG_DIRECTORY"
     )
     
     hs_codes_file: str = Field(
@@ -174,7 +186,15 @@ class HSAgentSettings(BaseSettings):
         env="MAX_CONCURRENT_REQUESTS",
         ge=1
     )
-    
+
+    max_output_paths: int = Field(
+        20,
+        description="Maximum number of classification paths to return in multi-choice mode",
+        env="MAX_OUTPUT_PATHS",
+        ge=1,
+        le=100
+    )
+
     request_timeout_seconds: int = Field(
         300,
         description="Request timeout in seconds",
