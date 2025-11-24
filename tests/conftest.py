@@ -17,7 +17,28 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from hs_agent.config import settings
-from hs_agent.core.models import HSCode, TaxCodeEntry, ProductExample
+
+# Simple mock classes for testing - we don't need the full models
+class HSCode:
+    def __init__(self, code, description, level, parent=None, section=None):
+        self.code = code
+        self.description = description
+        self.level = level
+        self.parent = parent
+        self.section = section
+
+class TaxCodeEntry:
+    def __init__(self, avalara_code, description, additional_info=None):
+        self.avalara_code = avalara_code
+        self.description = description
+        self.additional_info = additional_info
+
+class ProductExample:
+    def __init__(self, hs_code, product_description, source, confidence):
+        self.hs_code = hs_code
+        self.product_description = product_description
+        self.source = source
+        self.confidence = confidence
 
 
 @pytest.fixture(scope="session")
@@ -228,10 +249,12 @@ def assert_confidence_score(score: float):
 
 def create_test_classification_result(code: str, confidence: float = 0.9):
     """Create a test classification result."""
-    from hs_agent.core.models import ClassificationResult
-    
+    from hs_agent.models import ClassificationResult, ClassificationLevel
+
     return ClassificationResult(
+        level=ClassificationLevel.SUBHEADING,
         selected_code=code,
+        description=f"Test description for {code}",
         confidence=confidence,
         reasoning=f"Test classification for {code}"
     )

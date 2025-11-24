@@ -6,6 +6,7 @@
     <title>Single Classification - HS Agent</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -31,6 +32,66 @@
             padding: 0.125rem 0.25rem;
             border-radius: 0.25rem;
             font-size: 0.875em;
+        }
+        /* Tree Visualization Styles */
+        #tree-container {
+            width: 100%;
+            overflow-x: auto;
+            background: white;
+            border-radius: 0.5rem;
+        }
+        .tree-node {
+            cursor: pointer;
+        }
+        .tree-node circle {
+            stroke-width: 2px;
+            transition: all 0.3s ease;
+        }
+        .tree-node.selected circle {
+            fill: #10b981;
+            stroke: #059669;
+        }
+        .tree-node.explored circle {
+            fill: #93c5fd;
+            stroke: #60a5fa;
+        }
+        .tree-node:hover circle {
+            stroke-width: 3px;
+            filter: brightness(1.1);
+        }
+        .tree-node text {
+            font-size: 11px;
+            font-weight: 600;
+            pointer-events: none;
+        }
+        .tree-link {
+            fill: none;
+            stroke: #9ca3af;
+            stroke-width: 2px;
+        }
+        .tree-link.selected {
+            stroke: #10b981;
+            stroke-width: 3px;
+        }
+        .tree-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 1000;
+            max-width: 300px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .tree-tooltip .tooltip-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        .tree-tooltip .tooltip-confidence {
+            color: #10b981;
+            font-size: 11px;
         }
     </style>
 </head>
@@ -339,6 +400,15 @@
                     </div>
                 </div>
 
+                <!-- Tree Visualization (High Performance Mode Only) -->
+                ${isHighPerformance && data.paths_explored && data.paths_explored.length > 1 ? `
+                    <div class="mt-6 border border-purple-200 rounded-lg p-4 bg-white">
+                        <h3 class="text-sm font-bold text-gray-800 mb-3">🌳 Path Exploration Tree</h3>
+                        <p class="text-xs text-gray-600 mb-4">Visual representation of explored classification paths. Green nodes show the selected path, blue nodes show alternatives explored.</p>
+                        <div id="tree-container"></div>
+                    </div>
+                ` : ''}
+
                 <!-- Explored Paths (High Performance Mode Only) -->
                 ${isHighPerformance && data.paths_explored && data.paths_explored.length > 1 ? `
                     <details class="mt-6 border border-gray-200 rounded-lg p-4 bg-gray-50">
@@ -389,7 +459,230 @@
                 if (comparisonReasoning && data.comparison_reasoning) {
                     comparisonReasoning.innerHTML = marked.parse(data.comparison_reasoning);
                 }
+
+                // Render tree visualization if in high performance mode
+                if (isHighPerformance && data.paths_explored && data.paths_explored.length > 1) {
+                    renderTreeVisualization(data);
+                }
             }, 0);
+        }
+
+        function buildTreeData(data) {
+            // Build hierarchical tree structure from paths_explored
+            const finalCode = data.final_code;
+            
+            // Root node - product description
+            const root = {
+                name: 'Description',
+                code: '',
+                description: data.product_description.substring(0, 40) + '...',
+                layer: 'Description',
+                isSelected: true,
+                children: []
+            };
+
+            // Group paths by chapter
+            const chapterMap = new Map();
+            data.paths_explored.forEach(path => {
+                if (!chapterMap.has(path.chapter_code)) {
+                    chapterMap.set(path.chapter_code, {
+                        name: path.chapter_code,
+                        code: path.chapter_code,
+                        description: path.chapter_description,
+                        layer: 'Chapter',
+                        isSelected: path.subheading_code === finalCode,
+                        confidence: path.path_confidence,
+                        children: []
+                    });
+                }
+                
+                const chapter = chapterMap.get(path.chapter_code);
+                
+                // Group by heading within chapter
+                let heading = chapter.children.find(h => h.code === path.heading_code);
+                if (!heading) {
+                    heading = {
+                        name: path.heading_code,
+                        code: path.heading_code,
+                        description: path.heading_description,
+                        layer: 'Heading',
+                        isSelected: path.subheading_code === finalCode,
+                        confidence: path.path_confidence,
+                        children: []
+                    };
+                    chapter.children.push(heading);
+                }
+                
+                // Add subheading
+                heading.children.push({
+                    name: path.subheading_code,
+                    code: path.subheading_code,
+                    description: path.subheading_description,
+                    layer: 'Subheading',
+                    isSelected: path.subheading_code === finalCode,
+                    confidence: path.path_confidence
+                });
+                
+                // Update parent selection status
+                if (path.subheading_code === finalCode) {
+                    chapter.isSelected = true;
+                    heading.isSelected = true;
+                }
+            });
+
+            root.children = Array.from(chapterMap.values());
+            return root;
+        }
+
+        function renderTreeVisualization(data) {
+            const container = document.getElementById('tree-container');
+            if (!container) return;
+
+            // Clear previous content
+            container.innerHTML = '';
+
+            const treeData = buildTreeData(data);
+            
+            // Set dimensions
+            const width = container.offsetWidth || 800;
+            const height = 600;
+            const margin = { top: 50, right: 120, bottom: 20, left: 120 };
+
+            // Create SVG
+            const svg = d3.select('#tree-container')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Create tree layout
+            const treeLayout = d3.tree()
+                .size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+
+            // Create hierarchy
+            const root = d3.hierarchy(treeData);
+            const treeDataLayout = treeLayout(root);
+
+            // Add layer grouping indicators and labels FIRST (so they appear behind)
+            const layers = [
+                { name: 'Description', layer: 1 },
+                { name: 'Chapter', layer: 2 },
+                { name: 'Heading', layer: 3 },
+                { name: 'Subheading', layer: 4 }
+            ];
+            const layerWidth = (width - margin.left - margin.right) / 3;
+            const layerPositions = [0, 1, 2, 3].map(i => i * layerWidth);
+            
+            // Add background rectangles for each layer zone
+            layers.forEach((layer, i) => {
+                if (i > 0) { // Skip description layer for cleaner look
+                    svg.append('rect')
+                        .attr('x', layerPositions[i] - layerWidth / 2)
+                        .attr('y', -40)
+                        .attr('width', layerWidth)
+                        .attr('height', height - margin.top - margin.bottom + 40)
+                        .attr('fill', i % 2 === 0 ? '#f9fafb' : '#ffffff')
+                        .attr('opacity', 0.5)
+                        .attr('stroke', '#e5e7eb')
+                        .attr('stroke-width', 1)
+                        .attr('stroke-dasharray', '4,4');
+                }
+            });
+            
+            // Add layer labels with better spacing and styling
+            layers.forEach((layer, i) => {
+                const x = layerPositions[i];
+                
+                // Add layer number badge
+                svg.append('rect')
+                    .attr('x', x - 35)
+                    .attr('y', -35)
+                    .attr('width', 70)
+                    .attr('height', 24)
+                    .attr('rx', 4)
+                    .attr('fill', '#8b5cf6')
+                    .attr('opacity', 0.1);
+                
+                // Add "Layer N" text
+                svg.append('text')
+                    .attr('x', x)
+                    .attr('y', -28)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#8b5cf6')
+                    .attr('font-size', '9px')
+                    .attr('font-weight', 'bold')
+                    .text(`Layer ${layer.layer}`);
+                
+                // Add layer name
+                svg.append('text')
+                    .attr('x', x)
+                    .attr('y', -17)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', '#6b7280')
+                    .attr('font-size', '11px')
+                    .attr('font-weight', '600')
+                    .text(layer.name);
+            });
+
+            // Draw links
+            svg.selectAll('.tree-link')
+                .data(treeDataLayout.links())
+                .join('path')
+                .attr('class', d => `tree-link ${d.target.data.isSelected ? 'selected' : ''}`)
+                .attr('d', d3.linkHorizontal()
+                    .x(d => d.y)
+                    .y(d => d.x));
+
+            // Create tooltip
+            const tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tree-tooltip')
+                .style('opacity', 0);
+
+            // Draw nodes
+            const nodes = svg.selectAll('.tree-node')
+                .data(treeDataLayout.descendants())
+                .join('g')
+                .attr('class', d => `tree-node ${d.data.isSelected ? 'selected' : 'explored'}`)
+                .attr('transform', d => `translate(${d.y},${d.x})`)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', 1);
+                    
+                    let tooltipContent = `<div class="tooltip-title">${d.data.name}</div>`;
+                    tooltipContent += `<div style="font-size: 10px; margin-bottom: 4px;">${d.data.layer}</div>`;
+                    if (d.data.description) {
+                        tooltipContent += `<div>${d.data.description.substring(0, 100)}${d.data.description.length > 100 ? '...' : ''}</div>`;
+                    }
+                    if (d.data.confidence !== undefined) {
+                        tooltipContent += `<div class="tooltip-confidence">Confidence: ${(d.data.confidence * 100).toFixed(1)}%</div>`;
+                    }
+                    
+                    tooltip.html(tooltipContent)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 10) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition()
+                        .duration(200)
+                        .style('opacity', 0);
+                });
+
+            // Add circles
+            nodes.append('circle')
+                .attr('r', d => d.data.layer === 'Description' ? 8 : 6);
+
+            // Add labels
+            nodes.append('text')
+                .attr('dy', '0.31em')
+                .attr('x', d => d.children ? -12 : 12)
+                .attr('text-anchor', d => d.children ? 'end' : 'start')
+                .text(d => d.data.name)
+                .clone(true).lower()
+                .attr('stroke', 'white')
+                .attr('stroke-width', 3);
         }
 
         function copyResult() {
