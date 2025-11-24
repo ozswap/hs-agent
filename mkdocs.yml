@@ -34,6 +34,16 @@ theme:
 
 plugins:
   - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: true
+            members_order: source
+            show_signature_annotations: true
+            separate_signature: true
 
 markdown_extensions:
   - pymdownx.highlight:
@@ -57,6 +67,12 @@ nav:
   - User Guide:
     - Overview: user-guide/overview.md
     - CLI Usage: user-guide/cli-usage.md
+  - API Reference:
+    - Agent: api-reference/agent.md
+    - Data Loader: api-reference/data-loader.md
+    - Models: api-reference/models.md
+    - CLI: api-reference/cli.md
+    - Config: api-reference/config.md
   - Technical Details:
     - Wide Net Classification: wide_net_classification_explained.md
 
