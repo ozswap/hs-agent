@@ -13,7 +13,7 @@ HS Agent automatically classifies products into 6-digit HS codes using hierarchi
 - **RESTful API**: FastAPI-based endpoints with interactive docs
 - **Interactive Web UI**: Visual classification with path exploration
 - **CLI Interface**: Beautiful command-line interface with rich formatting
-- **Langfuse Observability**: Track and debug classifications
+- **Logfire Observability**: Trace and debug classifications
 
 ## Quick Links
 

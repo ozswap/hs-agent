@@ -69,6 +69,7 @@ class RetryPolicy:
                     ]
                     logger.debug(f"🔄 Added {attempt} line break(s) to prompt for variation")
 
+                # LangSmith OTEL auto-instruments LLM calls via Logfire
                 result = await model.ainvoke(messages_to_send)
 
                 if result is not None:

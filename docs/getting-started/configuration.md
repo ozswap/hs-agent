@@ -2,6 +2,8 @@
 
 HS Agent uses environment variables for configuration.
 
+For Logfire setup (auth, projects, write tokens), see [Pydantic Logfire docs](https://logfire.pydantic.dev/docs/).
+
 ## Required Setup
 
 ### Google Cloud Authentication
@@ -19,10 +21,12 @@ gcloud config set project YOUR_PROJECT_ID
 Create a `.env` file:
 
 ```bash
-# Langfuse Observability (local development)
-LANGFUSE_SECRET_KEY=sk-lf-your-secret-key
-LANGFUSE_PUBLIC_KEY=pk-lf-your-public-key
-LANGFUSE_HOST=http://localhost:3000
+# Logfire Observability
+# - Local dev: run `uv run logfire auth` then `uv run logfire projects use <project>`
+# - Production: set LOGFIRE_TOKEN in your environment
+ENABLE_LOGFIRE=true
+LOGFIRE_SERVICE_NAME=hs-agent
+LOGFIRE_ENV=local
 
 # Optional: Model Configuration
 DEFAULT_MODEL_NAME=gemini-2.5-flash
@@ -68,7 +72,9 @@ LOG_LEVEL=INFO
 |----------|---------|-------------|
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `DEBUG_MODE` | `false` | Enable debug mode |
-| `ENABLE_LANGFUSE_LOGGING` | `true` | Enable Langfuse |
+| `ENABLE_LOGFIRE` | `true` | Enable Logfire observability |
+| `LOGFIRE_SERVICE_NAME` | `hs-agent` | Service name in Logfire |
+| `LOGFIRE_ENV` | *(unset)* | Environment tag in Logfire |
 
 ## Verify Configuration
 
@@ -89,9 +95,9 @@ uv run hs-agent health
 
 ```bash
 # .env
-LANGFUSE_SECRET_KEY=sk-lf-dev...
-LANGFUSE_PUBLIC_KEY=pk-lf-dev...
-LANGFUSE_HOST=http://localhost:3000
+ENABLE_LOGFIRE=true
+LOGFIRE_SERVICE_NAME=hs-agent
+LOGFIRE_ENV=dev
 DEBUG_MODE=true
 LOG_LEVEL=DEBUG
 ```
@@ -100,9 +106,10 @@ LOG_LEVEL=DEBUG
 
 ```bash
 # .env
-LANGFUSE_SECRET_KEY=sk-lf-prod...
-LANGFUSE_PUBLIC_KEY=pk-lf-prod...
-LANGFUSE_HOST=https://cloud.langfuse.com
+ENABLE_LOGFIRE=true
+# Recommended: set LOGFIRE_TOKEN in your deployment environment / secrets manager
+LOGFIRE_SERVICE_NAME=hs-agent
+LOGFIRE_ENV=prod
 LOG_LEVEL=INFO
 API_WORKERS=4
 ```

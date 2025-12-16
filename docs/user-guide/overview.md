@@ -120,7 +120,7 @@ result = await agent.classify("laptop computer")
 
 ## Observability
 
-- Langfuse integration for LLM call tracing
+- Logfire tracing (OpenTelemetry-based) for request + agent run observability
 - Structured logging with rich formatting
 - Health check endpoints
 - Performance monitoring

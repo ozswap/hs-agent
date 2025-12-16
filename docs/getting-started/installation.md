@@ -38,11 +38,15 @@ gcloud auth application-default login
 Create a `.env` file:
 
 ```bash
-# Langfuse Observability (local development)
-LANGFUSE_SECRET_KEY=sk-lf-your-key...
-LANGFUSE_PUBLIC_KEY=pk-lf-your-key...
-LANGFUSE_HOST=http://localhost:3000
+# Logfire Observability
+# - Local dev: run `uv run logfire auth` then `uv run logfire projects use <project>`
+# - Production: set LOGFIRE_TOKEN in your environment
+ENABLE_LOGFIRE=true
+LOGFIRE_SERVICE_NAME=hs-agent
+LOGFIRE_ENV=local
 ```
+
+See [Pydantic Logfire docs](https://logfire.pydantic.dev/docs/) for authentication and write token details.
 
 ## Verification
 

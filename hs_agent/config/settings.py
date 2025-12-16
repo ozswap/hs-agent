@@ -41,24 +41,6 @@ class HSAgentSettings(BaseSettings):
         env="GOOGLE_API_KEY"
     )
     
-    langfuse_secret_key: Optional[str] = Field(
-        None,
-        description="Langfuse secret key for observability",
-        env="LANGFUSE_SECRET_KEY"
-    )
-    
-    langfuse_public_key: Optional[str] = Field(
-        None,
-        description="Langfuse public key for observability",
-        env="LANGFUSE_PUBLIC_KEY"
-    )
-    
-    langfuse_host: str = Field(
-        "https://cloud.langfuse.com",
-        description="Langfuse host URL",
-        env="LANGFUSE_HOST"
-    )
-    
     # === Model Configuration ===
     default_model_name: str = Field(
         "gemini-2.5-flash",
@@ -209,10 +191,25 @@ class HSAgentSettings(BaseSettings):
         env="LOG_LEVEL"
     )
     
-    enable_langfuse_logging: bool = Field(
+    enable_logfire_logging: bool = Field(
         True,
-        description="Enable Langfuse observability logging",
-        env="ENABLE_LANGFUSE_LOGGING"
+        description="Enable Logfire observability logging",
+        env="ENABLE_LOGFIRE"
+    )
+
+    # Note: LangSmith OTEL tracing (LANGSMITH_TRACING + LANGSMITH_OTEL_ENABLED) is always on
+    # for full LangGraph span visibility in Logfire. LangSmith error logs are suppressed in app.py/cli.py.
+
+    logfire_service_name: str = Field(
+        "hs-agent",
+        description="Service name shown in Logfire",
+        env="LOGFIRE_SERVICE_NAME"
+    )
+
+    logfire_environment: Optional[str] = Field(
+        None,
+        description="Deployment environment shown in Logfire (e.g. dev/staging/prod)",
+        env="LOGFIRE_ENV"
     )
     
     log_file: Optional[Path] = Field(
@@ -263,13 +260,9 @@ class HSAgentSettings(BaseSettings):
         )
     
     @property
-    def langfuse_enabled(self) -> bool:
-        """Check if Langfuse is properly configured."""
-        return (
-            self.enable_langfuse_logging and
-            self.langfuse_secret_key is not None and
-            self.langfuse_public_key is not None
-        )
+    def logfire_enabled(self) -> bool:
+        """Check if Logfire is enabled."""
+        return self.enable_logfire_logging
     
     @property
     def hs_codes_path(self) -> Path:
@@ -295,6 +288,8 @@ class HSAgentSettings(BaseSettings):
         "env_file": ".env",
         "env_file_encoding": "utf-8",
         "case_sensitive": False,
+        # Allow old/unused env vars (e.g. LANGFUSE_*) to exist without crashing startup
+        "extra": "ignore",
         "validate_assignment": True,
     }
 

@@ -31,11 +31,15 @@ gcloud auth application-default login
 **Create a `.env` file:**
 
 ```bash
-# Langfuse Observability (local development)
-LANGFUSE_SECRET_KEY=sk-lf-f048...
-LANGFUSE_PUBLIC_KEY=pk-lf-aba5...
-LANGFUSE_HOST=http://localhost:3000
+# Logfire Observability
+# - Local dev: run `uv run logfire auth` then `uv run logfire projects use <project>`
+# - Production: set LOGFIRE_TOKEN in your environment
+ENABLE_LOGFIRE=true
+LOGFIRE_SERVICE_NAME=hs-agent
+LOGFIRE_ENV=local
 ```
+
+For Logfire setup details, see [Pydantic Logfire docs](https://logfire.pydantic.dev/docs/).
 
 ### Usage
 
@@ -77,7 +81,7 @@ The web UI includes:
 - FastAPI REST endpoints with interactive Swagger docs
 - Interactive web UI with visual path exploration
 - CLI with rich formatting
-- Langfuse observability for tracking and debugging
+- Logfire observability for tracing and debugging (OpenTelemetry-based)
 
 ## Requirements
 
