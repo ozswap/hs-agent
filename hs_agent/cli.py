@@ -1,12 +1,27 @@
 """Unified CLI for HS Agent using Typer."""
 
+import logging
+import os
 import asyncio
 import sys
+import warnings
 from typing import Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
+
+# Enable LangChain/LangGraph OpenTelemetry tracing (LangSmith OTEL) early.
+# Per Logfire docs (https://logfire.pydantic.dev/docs/integrations/llms/langchain/),
+# these env vars must be set before importing langchain/langgraph.
+os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+os.environ.setdefault("LANGSMITH_TRACING", "true")
+
+# Suppress noisy LangSmith 401 / upload-failure logs (we don't have LangSmith API key)
+logging.getLogger("langsmith.client").setLevel(logging.CRITICAL)
+logging.getLogger("langsmith.utils").setLevel(logging.CRITICAL)
+warnings.filterwarnings("ignore", message=".*LangSmithAuthError.*")
+warnings.filterwarnings("ignore", message=".*Failed to multipart ingest runs.*")
 
 from hs_agent.agent import HSAgent
 from hs_agent.data_loader import HSDataLoader
@@ -202,9 +217,11 @@ def config():
     table.add_row("Default Model", settings.default_model_name)
     table.add_row("API Port", str(settings.api_port))
     table.add_row("Max Output Paths", str(settings.max_output_paths))
-    table.add_row("Langfuse Enabled", str(settings.langfuse_enabled))
-    if settings.langfuse_enabled:
-        table.add_row("Langfuse Host", settings.langfuse_host)
+    table.add_row("Logfire Enabled", str(settings.logfire_enabled))
+    if settings.logfire_enabled:
+        table.add_row("Logfire Service", settings.logfire_service_name)
+        if settings.logfire_environment:
+            table.add_row("Logfire Environment", settings.logfire_environment)
 
     console.print()
     console.print(table)

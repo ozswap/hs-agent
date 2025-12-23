@@ -1,8 +1,23 @@
 """Simple FastAPI application for HS Agent."""
 
+import logging
+import os
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
+
+# Enable LangChain/LangGraph OpenTelemetry tracing (LangSmith OTEL) early.
+# Per Logfire docs (https://logfire.pydantic.dev/docs/integrations/llms/langchain/),
+# these env vars must be set before importing langchain/langgraph.
+os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+os.environ.setdefault("LANGSMITH_TRACING", "true")
+
+# Suppress noisy LangSmith 401 / upload-failure logs (we don't have LangSmith API key)
+logging.getLogger("langsmith.client").setLevel(logging.CRITICAL)
+logging.getLogger("langsmith.utils").setLevel(logging.CRITICAL)
+warnings.filterwarnings("ignore", message=".*LangSmithAuthError.*")
+warnings.filterwarnings("ignore", message=".*Failed to multipart ingest runs.*")
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
@@ -32,6 +47,21 @@ app = FastAPI(
     description="AI-powered HS code classification service",
     version="1.0.0"
 )
+
+# Logfire observability (traces/spans)
+if settings.logfire_enabled:
+    try:
+        import logfire
+
+        logfire.configure(
+            send_to_logfire="if-token-present",
+            service_name=settings.logfire_service_name,
+            environment=settings.logfire_environment,
+        )
+        logfire.instrument_fastapi(app)
+        logger.init_complete("Logfire observability", "enabled")
+    except Exception as e:
+        logger.warning(f"⚠️  Logfire initialization failed: {e}")
 
 # Mount static files
 static_dir = Path(__file__).parent / "static"

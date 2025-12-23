@@ -18,15 +18,14 @@ from hs_agent.utils.logger import get_logger
 # Get centralized logger
 logger = get_logger("hs_agent.agent")
 
-
 class HSAgent:
-    """HS classification agent using LangGraph with Langfuse tracking.
+    """HS classification agent using LangGraph with Logfire tracing.
 
     This is a facade class that delegates to workflow classes for the actual
     classification logic. It manages:
     - Configuration loading
     - Service initialization (retry policy, chapter notes)
-    - Langfuse observability integration
+    - Logfire observability integration
     - Public API (classify, classify_multi methods)
     """
 
@@ -75,26 +74,6 @@ class HSAgent:
             chapter_notes_service=self.chapter_notes_service
         )
 
-        # Initialize Langfuse if enabled (SDK v3)
-        self.langfuse_handler = None
-        if settings.langfuse_enabled:
-            try:
-                from langfuse import Langfuse
-                from langfuse.langchain import CallbackHandler
-
-                # Initialize Langfuse client (SDK v3 pattern)
-                Langfuse(
-                    public_key=settings.langfuse_public_key,
-                    secret_key=settings.langfuse_secret_key,
-                    host=settings.langfuse_host
-                )
-
-                # Create callback handler (no constructor args in v3)
-                self.langfuse_handler = CallbackHandler()
-                logger.init_complete("Langfuse tracking", "SDK v3")
-            except Exception as e:
-                logger.warning(f"⚠️  Langfuse initialization failed: {e}")
-
         # Build LangGraphs using workflows
         self.graph = self.single_path_workflow.build_graph()
         self.multi_graph = self.multi_path_workflow.build_graph()
@@ -127,13 +106,8 @@ class HSAgent:
             "overall_confidence": None
         }
 
-        # Prepare config with Langfuse callbacks (SDK v3 pattern)
-        config = {}
-        if self.langfuse_handler:
-            config["callbacks"] = [self.langfuse_handler]
-
-        # Run graph with callbacks
-        final_state = await self.graph.ainvoke(initial_state, config=config)
+        # Run graph (LangSmith OTEL auto-instruments via Logfire)
+        final_state = await self.graph.ainvoke(initial_state)
 
         processing_time = (time.time() - start) * 1000
 
@@ -188,13 +162,8 @@ class HSAgent:
             "comparison_summary": None
         }
 
-        # Prepare config with Langfuse callbacks
-        config = {}
-        if self.langfuse_handler:
-            config["callbacks"] = [self.langfuse_handler]
-
-        # Run multi-choice graph
-        final_state = await self.multi_graph.ainvoke(initial_state, config=config)
+        # Run multi-choice graph (LangSmith OTEL auto-instruments via Logfire)
+        final_state = await self.multi_graph.ainvoke(initial_state)
 
         processing_time = (time.time() - start) * 1000
 

@@ -11,7 +11,6 @@ dependencies = [
     "langchain>=0.3.27",
     "langchain-core>=0.3.76",
     "langchain-google-vertexai>=2.1.2",
-    "langfuse>=3.4.0",
     "langgraph>=0.6.7",
     "loguru>=0.7.3",
     "mkdocs>=1.6.1",
@@ -35,6 +34,9 @@ dependencies = [
     "pyyaml>=6.0.2",
     "pypdf>=6.1.1",
     "pymupdf4llm>=0.0.27",
+    "logfire>=4.16.0",
+    "opentelemetry-instrumentation-fastapi>=0.60b1",
+    "opentelemetry-instrumentation-asgi>=0.60b1",
 ]
 
 [project.scripts]
