@@ -7,8 +7,6 @@ This workflow performs step-by-step hierarchical classification:
 4. Calculate final confidence score
 """
 
-from typing import Dict, Optional
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
@@ -33,11 +31,7 @@ class SinglePathWorkflow(BaseWorkflow):
     """Workflow for single-path hierarchical HS code classification."""
 
     def __init__(
-        self,
-        data_loader: HSDataLoader,
-        model_name: str,
-        configs: Dict,
-        retry_policy: RetryPolicy
+        self, data_loader: HSDataLoader, model_name: str, configs: dict, retry_policy: RetryPolicy
     ):
         """Initialize the single-path workflow.
 
@@ -79,47 +73,51 @@ class SinglePathWorkflow(BaseWorkflow):
             state["product_description"],
             self.data_loader.codes_2digit,
             ClassificationLevel.CHAPTER,
-            config_name="select_chapter_candidates"
+            config_name="select_chapter_candidates",
         )
         return {**state, "chapter_result": result}
 
     async def _select_heading(self, state: ClassificationState) -> ClassificationState:
         """Evaluate all headings under selected chapter and select the best one."""
         chapter_code = state["chapter_result"].selected_code
-        codes = {c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)}
+        codes = {
+            c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)
+        }
         result = await self._select_code(
             state["product_description"],
             codes,
             ClassificationLevel.HEADING,
             config_name="select_heading_candidates",
-            parent_code=chapter_code
+            parent_code=chapter_code,
         )
         return {**state, "heading_result": result}
 
     async def _select_subheading(self, state: ClassificationState) -> ClassificationState:
         """Evaluate all subheadings under selected heading and select the best one."""
         heading_code = state["heading_result"].selected_code
-        codes = {c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)}
+        codes = {
+            c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)
+        }
         result = await self._select_code(
             state["product_description"],
             codes,
             ClassificationLevel.SUBHEADING,
             config_name="select_subheading_candidates",
-            parent_code=heading_code
+            parent_code=heading_code,
         )
         return {**state, "subheading_result": result}
 
     async def _finalize(self, state: ClassificationState) -> ClassificationState:
         """Calculate final confidence and code."""
-        overall_confidence = (
-            state["chapter_result"].confidence * 0.3 +
-            state["heading_result"].confidence * 0.3 +
-            state["subheading_result"].confidence * 0.4
+        overall_confidence = self.calculate_overall_confidence(
+            state["chapter_result"].confidence,
+            state["heading_result"].confidence,
+            state["subheading_result"].confidence,
         )
         return {
             **state,
             "final_code": state["subheading_result"].selected_code,
-            "overall_confidence": overall_confidence
+            "overall_confidence": overall_confidence,
         }
 
     # ========== Helper Methods ==========
@@ -127,10 +125,10 @@ class SinglePathWorkflow(BaseWorkflow):
     async def _select_code(
         self,
         product_description: str,
-        codes_dict: Dict,
+        codes_dict: dict,
         level: ClassificationLevel,
         config_name: str = "select_chapter_candidates",
-        parent_code: Optional[str] = None
+        parent_code: str | None = None,
     ) -> ClassificationResult:
         """Evaluate all codes and select the best one using config prompts."""
 
@@ -140,39 +138,43 @@ class SinglePathWorkflow(BaseWorkflow):
         # Use prompts from config if available
         config = self.configs.get(config_name, {})
 
-        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
+        system_prompt = (
+            get_prompt(config, "system")
+            or """You are an HS code classification expert.
 Evaluate all codes and select the BEST one. Provide confidence (0.0-1.0) and reasoning."""
+        )
 
         # Build template variables
         template_vars = {
             "product_description": product_description,
             "candidates_list": candidates_list,
-            "level": self._get_level_name(level)
+            "level": self._get_level_name(level),
         }
 
         # Use base class helper to add parent context
         self._add_parent_context(template_vars, level, parent_code)
 
-        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
+        user_prompt = (
+            get_prompt(config, "user", **template_vars)
+            or f"""Product: "{product_description}"
 
 Candidates:
 {candidates_list}
 
 Evaluate all codes and select the most accurate one."""
+        )
 
         try:
             # Get config-specific model for this selection step
             # Pass enum codes to constrain LLM to only select from valid codes
             selection_model = ModelFactory.create_with_config(
-                self.model_name,
-                config,
-                enum_codes=list(codes_dict.keys())
+                self.model_name, config, enum_codes=list(codes_dict.keys())
             )
 
             # Invoke with retry logic
             result = await self.retry_policy.invoke_with_retry(
                 selection_model,
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
             )
 
             # Handle exhausted retries - return "000000" (insufficient information)
@@ -180,28 +182,28 @@ Evaluate all codes and select the most accurate one."""
                 return create_no_hs_code_result(
                     level=level,
                     confidence=0.0,
-                    reasoning="Unable to classify - LLM failed to return valid response after retries"
+                    reasoning="Unable to classify - LLM failed to return valid response after retries",
                 )
 
             # Handle special "000000" code for invalid descriptions
             if is_no_hs_code(result["selected_code"]):
                 return create_no_hs_code_result(
-                    level=level,
-                    confidence=result["confidence"],
-                    reasoning=result["reasoning"]
+                    level=level, confidence=result["confidence"], reasoning=result["reasoning"]
                 )
 
             # Validate that selected code is in codes_dict
             if result["selected_code"] not in codes_dict:
                 # LLM returned invalid code - this should not happen with proper schemas
-                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in codes: {list(codes_dict.keys())}")
+                raise ValueError(
+                    f"LLM selected invalid code '{result['selected_code']}' not in codes: {list(codes_dict.keys())}"
+                )
 
             return ClassificationResult(
                 level=level,
                 selected_code=result["selected_code"],
                 description=codes_dict[result["selected_code"]].description,
                 confidence=result["confidence"],
-                reasoning=result["reasoning"]
+                reasoning=result["reasoning"],
             )
 
         except Exception as e:

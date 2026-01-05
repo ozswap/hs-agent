@@ -2,9 +2,9 @@
 
 import logging
 import os
-import time
 import warnings
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 
 # Enable LangChain/LangGraph OpenTelemetry tracing (LangSmith OTEL) early.
@@ -19,14 +19,15 @@ logging.getLogger("langsmith.utils").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore", message=".*LangSmithAuthError.*")
 warnings.filterwarnings("ignore", message=".*Failed to multipart ingest runs.*")
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
+# Imports must come after env var setup for LangSmith OTEL tracing
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import FileResponse, RedirectResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 
-from hs_agent.agent import HSAgent
-from hs_agent.config.settings import settings
-from hs_agent.data_loader import HSDataLoader
-from hs_agent.models import (
+from hs_agent.agent import HSAgent  # noqa: E402
+from hs_agent.config.settings import settings  # noqa: E402
+from hs_agent.data_loader import HSDataLoader  # noqa: E402
+from hs_agent.models import (  # noqa: E402
     ClassificationLevel,
     ClassificationRequest,
     ClassificationResponse,
@@ -36,16 +37,14 @@ from hs_agent.models import (
     create_no_hs_code_result,
     is_no_hs_code,
 )
-from hs_agent.utils.logger import get_logger
+from hs_agent.utils.logger import get_logger  # noqa: E402
 
 # Get centralized logger with consistent styling
 logger = get_logger("hs_agent.api")
 
 
 app = FastAPI(
-    title="HS Agent",
-    description="AI-powered HS code classification service",
-    version="1.0.0"
+    title="HS Agent", description="AI-powered HS code classification service", version="1.0.0"
 )
 
 # Logfire observability (traces/spans)
@@ -68,15 +67,61 @@ static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# Global instances
-_data_loader = None
-_agent_standard = None
-_agent_wide_net = None
-_agent_multi_choice = None
+
+# Workflow configurations for agent factory
+WORKFLOW_CONFIG = {
+    "standard": (
+        "single_path_classification",
+        "Standard Agent",
+        "fast mode",
+        "⚡ One-shot hierarchical",
+    ),
+    "wide_net": (
+        "wide_net_classification",
+        "Wide Net Agent",
+        "high performance",
+        "🎯 Chapter notes + path comparison",
+    ),
+    "multi_choice": (
+        "multi_choice_classification",
+        "Multi-Choice Agent",
+        "1-to-N paths",
+        "🔀 Adaptive path exploration",
+    ),
+}
 
 
-def get_agent(use_wide_net: bool = False, use_multi_choice: bool = False):
-    """Get or create agent instance.
+@lru_cache(maxsize=1)
+def get_data_loader() -> HSDataLoader:
+    """Get cached data loader instance (thread-safe singleton)."""
+    logger.init_start("Data Loader")
+    data_loader = HSDataLoader()
+    data_loader.load_all_data()
+    logger.init_complete("Data Loader", f"📊 Loaded {len(data_loader.codes_6digit)} codes")
+    return data_loader
+
+
+@lru_cache(maxsize=3)
+def get_agent_by_workflow(workflow_key: str) -> HSAgent:
+    """Get cached agent instance for a specific workflow (thread-safe singleton).
+
+    Args:
+        workflow_key: One of "standard", "wide_net", "multi_choice"
+
+    Returns:
+        Configured HSAgent instance
+    """
+    config = WORKFLOW_CONFIG[workflow_key]
+    workflow_name, agent_name, init_detail, complete_detail = config
+
+    logger.init_start(agent_name, init_detail)
+    agent = HSAgent(get_data_loader(), workflow_name=workflow_name)
+    logger.init_complete(agent_name, complete_detail)
+    return agent
+
+
+def get_agent(use_wide_net: bool = False, use_multi_choice: bool = False) -> HSAgent:
+    """Get agent instance for the specified workflow mode.
 
     Args:
         use_wide_net: Use wide net classification workflow
@@ -85,37 +130,15 @@ def get_agent(use_wide_net: bool = False, use_multi_choice: bool = False):
     Returns:
         Agent instance configured for the specified workflow
     """
-    global _data_loader, _agent_standard, _agent_wide_net, _agent_multi_choice
-
-    # Initialize data loader if needed
-    if _data_loader is None:
-        logger.init_start("Data Loader")
-        _data_loader = HSDataLoader()
-        _data_loader.load_all_data()
-        logger.init_complete("Data Loader", f"📊 Loaded {len(_data_loader.codes_6digit)} codes")
-
-    # Get appropriate agent
     if use_multi_choice:
-        if _agent_multi_choice is None:
-            logger.init_start("Multi-Choice Agent", "1-to-N paths")
-            _agent_multi_choice = HSAgent(_data_loader, workflow_name="multi_choice_classification")
-            logger.init_complete("Multi-Choice Agent", "🔀 Adaptive path exploration")
-        return _agent_multi_choice
+        return get_agent_by_workflow("multi_choice")
     elif use_wide_net:
-        if _agent_wide_net is None:
-            logger.init_start("Wide Net Agent", "high performance mode")
-            _agent_wide_net = HSAgent(_data_loader, workflow_name="wide_net_classification")
-            logger.init_complete("Wide Net Agent", "🎯 Chapter notes + path comparison")
-        return _agent_wide_net
-    else:
-        if _agent_standard is None:
-            logger.init_start("Standard Agent", "fast mode")
-            _agent_standard = HSAgent(_data_loader, workflow_name="single_path_classification")
-            logger.init_complete("Standard Agent", "⚡ One-shot hierarchical")
-        return _agent_standard
+        return get_agent_by_workflow("wide_net")
+    return get_agent_by_workflow("standard")
 
 
 # ========== HTML Pages ==========
+
 
 @app.get("/classify")
 async def classify_page():
@@ -160,15 +183,21 @@ async def classify_product(request: ClassificationRequest):
             # High performance mode: use wide net approach
             agent = get_agent(use_wide_net=True)
 
-            logger.info(f"🎯 [bold]High Performance Mode:[/bold] [cyan]{request.product_description}[/cyan] [dim](paths={request.max_selections})[/dim]")
+            logger.info(
+                f"🎯 [bold]High Performance Mode:[/bold] [cyan]{request.product_description}[/cyan] [dim](paths={request.max_selections})[/dim]"
+            )
 
             # Use multi classification with comparison
             multi_result = await agent.classify_multi(
                 product_description=request.product_description,
-                max_selections=request.max_selections
+                max_selections=request.max_selections,
             )
 
-            logger.classify_result(multi_result.final_selected_code, multi_result.final_confidence, f"✨ Explored {len(multi_result.paths)} paths")
+            logger.classify_result(
+                multi_result.final_selected_code,
+                multi_result.final_confidence,
+                f"✨ Explored {len(multi_result.paths)} paths",
+            )
 
             # Handle special "000000" case for invalid descriptions
             if is_no_hs_code(multi_result.final_selected_code):
@@ -179,26 +208,33 @@ async def classify_product(request: ClassificationRequest):
                     chapter=create_no_hs_code_result(
                         level=ClassificationLevel.CHAPTER,
                         confidence=multi_result.final_confidence,
-                        reasoning=multi_result.final_reasoning
+                        reasoning=multi_result.final_reasoning,
                     ),
                     heading=create_no_hs_code_result(
                         level=ClassificationLevel.HEADING,
                         confidence=multi_result.final_confidence,
-                        reasoning=multi_result.final_reasoning
+                        reasoning=multi_result.final_reasoning,
                     ),
                     subheading=create_no_hs_code_result(
                         level=ClassificationLevel.SUBHEADING,
                         confidence=multi_result.final_confidence,
-                        reasoning=multi_result.final_reasoning
+                        reasoning=multi_result.final_reasoning,
                     ),
                     processing_time_ms=multi_result.processing_time_ms,
                     paths_explored=multi_result.paths,
                     comparison_reasoning=multi_result.final_reasoning,
-                    comparison_summary=multi_result.comparison_summary
+                    comparison_summary=multi_result.comparison_summary,
                 )
 
             # Extract the final selected path for the response (normal case)
-            final_path = next((p for p in multi_result.paths if p.subheading_code == multi_result.final_selected_code), multi_result.paths[0])
+            final_path = next(
+                (
+                    p
+                    for p in multi_result.paths
+                    if p.subheading_code == multi_result.final_selected_code
+                ),
+                multi_result.paths[0],
+            )
 
             # Convert to ClassificationResponse format with additional info
             return ClassificationResponse(
@@ -210,42 +246,40 @@ async def classify_product(request: ClassificationRequest):
                     selected_code=final_path.chapter_code,
                     description=final_path.chapter_description,
                     confidence=multi_result.final_confidence,
-                    reasoning=final_path.chapter_reasoning
+                    reasoning=final_path.chapter_reasoning,
                 ),
                 heading=ClassificationResult(
                     level=ClassificationLevel.HEADING,
                     selected_code=final_path.heading_code,
                     description=final_path.heading_description,
                     confidence=multi_result.final_confidence,
-                    reasoning=final_path.heading_reasoning
+                    reasoning=final_path.heading_reasoning,
                 ),
                 subheading=ClassificationResult(
                     level=ClassificationLevel.SUBHEADING,
                     selected_code=final_path.subheading_code,
                     description=final_path.subheading_description,
                     confidence=multi_result.final_confidence,
-                    reasoning=final_path.subheading_reasoning
+                    reasoning=final_path.subheading_reasoning,
                 ),
                 processing_time_ms=multi_result.processing_time_ms,
                 paths_explored=multi_result.paths,
                 comparison_reasoning=multi_result.final_reasoning,
-                comparison_summary=multi_result.comparison_summary
+                comparison_summary=multi_result.comparison_summary,
             )
         else:
             # Standard mode: one-shot classification
             agent = get_agent(use_wide_net=False)
 
             logger.classify_start(request.product_description, {"mode": "standard"})
-            result = await agent.classify(
-                product_description=request.product_description
-            )
+            result = await agent.classify(product_description=request.product_description)
 
             logger.classify_result(result.final_code, result.overall_confidence)
             return result
 
     except Exception as e:
         logger.error_msg("Classification", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.post("/api/classify/multi", response_model=MultiChoiceClassificationResponse)
@@ -267,18 +301,21 @@ async def classify_product_multi(request: MultiChoiceClassificationRequest):
         # Use multi-choice classification workflow (not wide net)
         agent = get_agent(use_multi_choice=True)
 
-        logger.info(f"🔀 [bold]Multi-Choice Classification:[/bold] [cyan]{request.product_description}[/cyan] [dim](max_selections={request.max_selections})[/dim]")
+        logger.info(
+            f"🔀 [bold]Multi-Choice Classification:[/bold] [cyan]{request.product_description}[/cyan] [dim](max_selections={request.max_selections})[/dim]"
+        )
         result = await agent.classify_multi(
-            product_description=request.product_description,
-            max_selections=request.max_selections
+            product_description=request.product_description, max_selections=request.max_selections
         )
 
-        logger.info(f"✨ Multi-Choice Result: Explored {len(result.paths)} path(s) → Final: {result.final_selected_code} (confidence: {result.final_confidence:.2%})")
+        logger.info(
+            f"✨ Multi-Choice Result: Explored {len(result.paths)} path(s) → Final: {result.final_selected_code} (confidence: {result.final_confidence:.2%})"
+        )
         return result
 
     except Exception as e:
         logger.error_msg("Multi-Choice Classification", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/health")
@@ -293,14 +330,11 @@ async def health_check():
             "codes_loaded": {
                 "chapters": len(agent.data_loader.codes_2digit),
                 "headings": len(agent.data_loader.codes_4digit),
-                "subheadings": len(agent.data_loader.codes_6digit)
-            }
+                "subheadings": len(agent.data_loader.codes_6digit),
+            },
         }
     except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e)
-        }
+        return {"status": "unhealthy", "error": str(e)}
 
 
 @app.get("/")
@@ -311,4 +345,5 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=settings.api_port)

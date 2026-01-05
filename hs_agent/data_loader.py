@@ -1,10 +1,12 @@
 """Simple HS codes data loader."""
 
 import pandas as pd
-from pathlib import Path
-from typing import Dict
-from hs_agent.models import HSCode
+
 from hs_agent.config.settings import settings
+from hs_agent.models import HSCode
+from hs_agent.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class HSDataLoader:
@@ -12,9 +14,9 @@ class HSDataLoader:
 
     def __init__(self):
         self.data_dir = settings.data_directory
-        self.codes_2digit: Dict[str, HSCode] = {}
-        self.codes_4digit: Dict[str, HSCode] = {}
-        self.codes_6digit: Dict[str, HSCode] = {}
+        self.codes_2digit: dict[str, HSCode] = {}
+        self.codes_4digit: dict[str, HSCode] = {}
+        self.codes_6digit: dict[str, HSCode] = {}
 
     def load_all_data(self) -> None:
         """Load HS codes from CSV file."""
@@ -24,12 +26,13 @@ class HSDataLoader:
             raise FileNotFoundError(f"HS codes file not found: {hs_codes_path}")
 
         df = pd.read_csv(hs_codes_path)
+        failed_count = 0
 
         for _, row in df.iterrows():
             try:
-                code = str(row['hscode']).strip()
-                description = str(row['description'])
-                level = int(row['level'])
+                code = str(row["hscode"]).strip()
+                description = str(row["description"])
+                level = int(row["level"])
 
                 hs_code = HSCode(code=code, description=description)
 
@@ -41,9 +44,15 @@ class HSDataLoader:
                     self.codes_6digit[code] = hs_code
 
             except Exception as e:
-                print(f"Warning: Failed to load code: {e}")
+                logger.warning(f"Failed to load HS code row: {e}")
+                failed_count += 1
                 continue
 
-        print(f"Loaded {len(self.codes_2digit)} chapters, "
-              f"{len(self.codes_4digit)} headings, "
-              f"{len(self.codes_6digit)} subheadings")
+        if failed_count > 0:
+            logger.warning(f"Skipped {failed_count} invalid rows during HS code loading")
+
+        logger.info(
+            f"Loaded {len(self.codes_2digit)} chapters, "
+            f"{len(self.codes_4digit)} headings, "
+            f"{len(self.codes_6digit)} subheadings"
+        )

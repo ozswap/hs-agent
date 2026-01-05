@@ -1,11 +1,10 @@
 """Unified CLI for HS Agent using Typer."""
 
+import asyncio
 import logging
 import os
-import asyncio
 import sys
 import warnings
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -23,14 +22,13 @@ logging.getLogger("langsmith.utils").setLevel(logging.CRITICAL)
 warnings.filterwarnings("ignore", message=".*LangSmithAuthError.*")
 warnings.filterwarnings("ignore", message=".*Failed to multipart ingest runs.*")
 
-from hs_agent.agent import HSAgent
-from hs_agent.data_loader import HSDataLoader
-from hs_agent.config.settings import settings
+# Imports must come after env var setup for LangSmith OTEL tracing
+from hs_agent.agent import HSAgent  # noqa: E402
+from hs_agent.config.settings import settings  # noqa: E402
+from hs_agent.data_loader import HSDataLoader  # noqa: E402
 
 app = typer.Typer(
-    name="hs-agent",
-    help="AI-powered HS code classification service",
-    add_completion=False
+    name="hs-agent", help="AI-powered HS code classification service", add_completion=False
 )
 console = Console()
 
@@ -54,7 +52,9 @@ def print_single_result(result):
     console.print(f"   Reasoning: {result.subheading.reasoning[:100]}...")
 
     console.print(f"\n✅ FINAL HS CODE: [bold green]{result.final_code}[/bold green]")
-    console.print(f"🎯 OVERALL CONFIDENCE: [bold yellow]{result.overall_confidence:.2f}[/bold yellow]")
+    console.print(
+        f"🎯 OVERALL CONFIDENCE: [bold yellow]{result.overall_confidence:.2f}[/bold yellow]"
+    )
     console.print(f"⏱️  Processing time: [dim]{result.processing_time_ms:.0f}ms[/dim]")
     console.print("=" * 80 + "\n", style="bold blue")
 
@@ -82,7 +82,7 @@ def print_multi_result(result):
 
 @app.command()
 def classify(
-    product_description: str = typer.Argument(..., help="Product description to classify")
+    product_description: str = typer.Argument(..., help="Product description to classify"),
 ):
     """
     Classify a product description to a single HS code (one-to-one).
@@ -90,6 +90,7 @@ def classify(
     Example:
         hs-agent classify "laptop computer"
     """
+
     async def run():
         with console.status("[bold green]Initializing HS Agent..."):
             loader = HSDataLoader()
@@ -109,7 +110,9 @@ def classify(
 @app.command()
 def classify_multi(
     product_description: str = typer.Argument(..., help="Product description to classify"),
-    max_selections: int = typer.Option(3, "--max-selections", "-m", help="Maximum number of codes to select at each level (1 to N)")
+    max_selections: int = typer.Option(
+        3, "--max-selections", "-m", help="Maximum number of codes to select at each level (1 to N)"
+    ),
 ):
     """
     Classify a product description to 1-N possible HS codes (one-to-many).
@@ -117,6 +120,7 @@ def classify_multi(
     Example:
         hs-agent classify-multi "cotton shirt" --max-selections 3
     """
+
     async def run():
         with console.status("[bold green]Initializing HS Agent..."):
             loader = HSDataLoader()
@@ -138,7 +142,7 @@ def classify_multi(
 def serve(
     host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind to"),
     port: int = typer.Option(None, "--port", "-p", help="Port to bind to"),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development")
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload for development"),
 ):
     """
     Start the FastAPI server.
@@ -147,21 +151,19 @@ def serve(
         hs-agent serve --port 8080 --reload
     """
     import uvicorn
+
     from hs_agent.config.settings import settings
 
     actual_port = port if port is not None else settings.api_port
 
-    console.print(f"\n[bold green]Starting HS Agent API server...[/bold green]")
+    console.print("\n[bold green]Starting HS Agent API server...[/bold green]")
     console.print(f"  Host: {host}")
     console.print(f"  Port: {actual_port}")
-    console.print(f"  Docs: http://{host if host != '0.0.0.0' else 'localhost'}:{actual_port}/docs\n")
-
-    uvicorn.run(
-        "app:app",
-        host=host,
-        port=actual_port,
-        reload=reload
+    console.print(
+        f"  Docs: http://{host if host != '0.0.0.0' else 'localhost'}:{actual_port}/docs\n"
     )
+
+    uvicorn.run("app:app", host=host, port=actual_port, reload=reload)
 
 
 @app.command()
@@ -172,6 +174,7 @@ def health():
     Example:
         hs-agent health
     """
+
     async def run():
         try:
             with console.status("[bold green]Checking system health..."):
@@ -179,7 +182,9 @@ def health():
                 loader.load_all_data()
                 agent = HSAgent(loader)
 
-            table = Table(title="HS Agent Health Status", show_header=True, header_style="bold magenta")
+            table = Table(
+                title="HS Agent Health Status", show_header=True, header_style="bold magenta"
+            )
             table.add_column("Component", style="cyan")
             table.add_column("Status", style="green")
             table.add_column("Details", style="dim")
@@ -195,7 +200,7 @@ def health():
             console.print()
 
         except Exception as e:
-            console.print(f"\n[bold red]❌ Health Check Failed[/bold red]")
+            console.print("\n[bold red]❌ Health Check Failed[/bold red]")
             console.print(f"Error: {e}\n")
             sys.exit(1)
 

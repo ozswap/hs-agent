@@ -61,27 +61,27 @@ graph LR
     subgraph Phase1 [PHASE 1: EXPLORATION - The Wide Net]
         direction LR
         Root(Product Description):::root
-        
+
         %% Chapter Level (Split 1)
         Root --> Ch61(Ch 61<br/>Knitted):::selected
         Root --> Ch62(Ch 62<br/>Woven):::explored
-        
+
         %% Heading Level (Split 2) - Exploration expands
         Ch61 --> H6109(6109<br/>T-shirts):::selected
         Ch61 --> H6105(6105<br/>Shirts):::explored
-        
+
         Ch62 --> H6205(6205<br/>Shirts):::explored
         Ch62 --> H6211(6211<br/>Other):::explored
-        
+
         %% Subheading Level (Split 3) - Leaves
         H6109 --> S610910(610910<br/>Cotton):::selected
         H6109 --> S610990(610990<br/>Other):::explored
-        
+
         H6105 --> S610510(610510<br/>Cotton):::explored
-        
+
         H6205 --> S620520(620520<br/>Cotton):::explored
         H6205 --> S620590(620590<br/>Other):::explored
-        
+
         H6211 --> S621132(621132<br/>Cotton):::explored
     end
 
@@ -93,10 +93,10 @@ graph LR
         S620590 -.-> Comp
         S610510 -.-> Comp
         S621132 -.-> Comp
-        
+
         Comp --> Final[🏆 SELECTED<br/>610910]:::selected
     end
-    
+
     style Phase1 fill:#fcfcfc,stroke:#eee
     style Phase2 fill:#f9f9f9,stroke:#eee
 ```
@@ -131,7 +131,7 @@ graph LR
 
     Product[Cotton t-shirt] --> Ch61(Chapter 61<br/>Knitted Apparel):::selected
     Product --> Ch62(Chapter 62<br/>Woven Apparel):::explored
-    
+
     Ch61 --> R1[Reasoning: T-shirts are<br/>typically knitted]
     Ch62 --> R2[Reasoning: Some t-shirts<br/>can be woven]
 ```
@@ -150,9 +150,9 @@ graph LR
     classDef explored fill:#bfdbfe,stroke:#3b82f6,color:black;
 
     Ch61(Ch 61<br/>Knitted) --> H6109(Heading 6109<br/>T-shirts):::selected
-    
+
     Ch62(Ch 62<br/>Woven) --> H6205(Heading 6205<br/>Shirts):::explored
-    
+
     H6109 --> E1[Perfect match:<br/>explicitly covers t-shirts]
     H6205 --> E2[Close match:<br/>covers shirts generally]
 ```
@@ -172,7 +172,7 @@ graph LR
 
     H6109(Heading 6109) --> S610910(610910<br/>Of cotton):::selected
     H6109 --> S610990(610990<br/>Other materials):::explored
-    
+
     H6205(Heading 6205) --> S620520(620520<br/>Of cotton):::explored
 ```
 
@@ -192,9 +192,9 @@ graph LR
     subgraph Paths [Constructed Paths]
         direction LR
         P1(Path 1):::selected --> C1[61 → 6109 → 610910<br/>Knitted cotton t-shirts<br/>Confidence: 95%]:::selected
-        
+
         P2(Path 2):::explored --> C2[61 → 6109 → 610990<br/>Knitted t-shirts, other<br/>Confidence: 80%]:::explored
-        
+
         P3(Path 3):::explored --> C3[62 → 6205 → 620520<br/>Woven cotton shirts<br/>Confidence: 75%]:::explored
     end
 ```
@@ -222,18 +222,18 @@ graph LR
         P2(Path 2: 610990<br/>Knitted other):::explored
         P3(Path 3: 620520<br/>Woven cotton):::explored
     end
-    
+
     P1 --> Judge{Comparison<br/>Expert}
     P2 --> Judge
     P3 --> Judge
-    
+
     Judge --> Crit[Evaluation Criteria]:::criteria
-    
+
     Crit --> C1[✓ Precision Match]:::criteria
     Crit --> C2[✓ Reasoning Quality]:::criteria
     Crit --> C3[✓ Legal Compliance]:::criteria
     Crit --> C4[✓ Trade Practice]:::criteria
-    
+
     C1 --> Winner[🏆 SELECTED: 610910<br/>Confidence: 95%]:::selected
     C2 --> Winner
     C3 --> Winner
@@ -288,13 +288,13 @@ graph LR
     classDef valid fill:#10b981,stroke:#059669,color:white;
 
     Input(Input Received) --> Check{Can this be<br/>classified?}
-    
+
     Check -->|Services| Inv1[000000<br/>Services not in HS]:::invalid
     Check -->|Unclear| Inv2[000000<br/>Category indeterminate]:::invalid
     Check -->|Violations| Inv3[000000<br/>No valid classification]:::invalid
     Check -->|Only ID| Inv4[000000<br/>No product info]:::invalid
     Check -->|Gibberish| Inv5[000000<br/>Invalid input]:::invalid
-    
+
     Check -->|Physical Good| OK[Continue with<br/>classification]:::valid
 ```
 
@@ -335,11 +335,11 @@ graph LR
 
     Root(Classification Strategy) --> Multi[Multi-Choice<br/>Show Options]:::multi
     Root --> Wide[Wide Net<br/>Explore & Select]:::wide
-    
+
     Multi --> M1[✓ Shows options]:::multi
     Multi --> M2[✓ Transparent]:::multi
     Multi --> M3[✗ Requires human]:::multi
-    
+
     Wide --> W1[✓ Explores alternatives]:::wide
     Wide --> W2[✓ Automated selection]:::wide
     Wide --> W3[✓ Highly defensible]:::wide
@@ -385,7 +385,7 @@ graph LR
     WideNet(Wide Net) --> Exp[Explores Multiple<br/>Options]:::step
     Exp --> Comp[Compares All<br/>Options]:::step
     Comp --> Sel[Selects Single<br/>Best Answer]:::step
-    
+
     Sel --> Result[User gets ONE answer<br/>backed by thorough analysis]:::final
 ```
 
@@ -406,12 +406,12 @@ graph LR
     classDef selected fill:#10b981,stroke:#059669,color:white;
 
     Q(Customs Question:<br/>Why this code?) --> A(Wide Net Response)
-    
+
     A --> Sel[Selected: 610910]:::selected
-    
+
     A --> Rej1[Rejected: 620520<br/>Reason: wrong material]:::rejected
     A --> Rej2[Rejected: 610990<br/>Reason: wrong construction]:::rejected
-    
+
     Sel --> Def[Full Audit Trail<br/>& Reasoning]
     Rej1 --> Def
     Rej2 --> Def
@@ -506,7 +506,7 @@ graph LR
     Setting[max_selections] --> L1[1 per level]:::opt
     Setting --> L2[2 per level]:::rec
     Setting --> L3[3 per level]:::opt
-    
+
     L1 --> O1[Conservative<br/>Fast & focused]
     L2 --> O2[Moderate<br/>Recommended balance]
     L3 --> O3[Aggressive<br/>Maximum coverage]
@@ -528,7 +528,7 @@ graph LR
     Chap --> Head[Heading Level]:::med
     Head --> Sub[Subheading Level]:::nar
     Sub --> Fin[Single Answer]:::wide
-    
+
     subgraph Strategy [Funnel Strategy]
         direction LR
         Chap -.->|Wide Net<br/>2-3 options| Head
@@ -551,7 +551,7 @@ graph LR
     classDef new fill:#10b981,stroke:#059669,color:white;
 
     Trad[Traditional<br/>Commit Early] --> Path1[One Path<br/>Hope it's right]:::trad
-    
+
     Wide[Wide Net<br/>Explore First] --> Path2[Multiple Paths<br/>Compare them]:::new
     Path2 --> Res[Choose Best<br/>With confidence]:::new
 ```
@@ -611,7 +611,7 @@ graph LR
     HS[HS Code: 610910] --> Ch[Chapter: 61<br/>Broad Category]:::chap
     HS --> Hd[Heading: 6109<br/>Product Type]:::head
     HS --> Sb[Subheading: 610910<br/>Specification]:::sub
-    
+
     Ch --> Ex1[e.g. Knitted Apparel]
     Hd --> Ex2[e.g. T-shirts]
     Sb --> Ex3[e.g. Of Cotton]

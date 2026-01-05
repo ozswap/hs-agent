@@ -8,7 +8,7 @@ This module provides a reusable retry policy that handles:
 """
 
 import asyncio
-from typing import Any, List, Optional
+from typing import Any
 
 from hs_agent.utils.logger import get_logger
 
@@ -19,10 +19,7 @@ class RetryPolicy:
     """Policy for retrying LLM invocations with exponential backoff."""
 
     def __init__(
-        self,
-        max_retries: int = 3,
-        initial_delay: float = 1.0,
-        prompt_variation: bool = True
+        self, max_retries: int = 3, initial_delay: float = 1.0, prompt_variation: bool = True
     ):
         """Initialize retry policy.
 
@@ -38,8 +35,8 @@ class RetryPolicy:
     async def invoke_with_retry(
         self,
         model: Any,
-        messages: List,
-    ) -> Optional[Any]:
+        messages: list,
+    ) -> Any | None:
         """Invoke LLM with retry logic for None results.
 
         Args:
@@ -80,20 +77,24 @@ class RetryPolicy:
 
                 if attempt < self.max_retries - 1:
                     # Exponential backoff: 1s, 2s, 4s, etc.
-                    delay = self.initial_delay * (2 ** attempt)
+                    delay = self.initial_delay * (2**attempt)
                     logger.info(f"🔄 Retrying in {delay}s...")
                     await asyncio.sleep(delay)
 
             except Exception as e:
                 last_exception = e
-                logger.warning(f"⚠️  LLM invocation error (attempt {attempt + 1}/{self.max_retries}): {e}")
+                logger.warning(
+                    f"⚠️  LLM invocation error (attempt {attempt + 1}/{self.max_retries}): {e}"
+                )
 
                 if attempt < self.max_retries - 1:
-                    delay = self.initial_delay * (2 ** attempt)
+                    delay = self.initial_delay * (2**attempt)
                     logger.info(f"🔄 Retrying in {delay}s...")
                     await asyncio.sleep(delay)
 
         # All retries exhausted - return None to signal caller to use "000000" code
         error_context = f" (last error: {last_exception})" if last_exception else ""
-        logger.error(f"❌ LLM failed after {self.max_retries} attempts{error_context} - will return 000000 (insufficient information)")
+        logger.error(
+            f"❌ LLM failed after {self.max_retries} attempts{error_context} - will return 000000 (insufficient information)"
+        )
         return None
