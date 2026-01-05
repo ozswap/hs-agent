@@ -1,13 +1,18 @@
 """Simple config loader for workflow configurations."""
 
 import re
-import yaml
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Type, Union
+from typing import Any
+
+import yaml
 from pydantic import BaseModel, Field, create_model
 
+from hs_agent.utils.logger import get_logger
 
-def _load_markdown_references(config: Union[Dict, List, Any], base_path: Path) -> Union[Dict, List, Any]:
+logger = get_logger(__name__)
+
+
+def _load_markdown_references(config: dict | list | Any, base_path: Path) -> dict | list | Any:
     """Recursively load .md file references in config.
 
     Any string value ending with .md will be treated as a file path and loaded.
@@ -22,15 +27,15 @@ def _load_markdown_references(config: Union[Dict, List, Any], base_path: Path) -
     if isinstance(config, dict):
         result = {}
         for key, value in config.items():
-            if isinstance(value, str) and value.endswith('.md'):
+            if isinstance(value, str) and value.endswith(".md"):
                 # Try to load the markdown file
                 file_path = base_path / value
                 if file_path.exists():
                     try:
-                        with open(file_path, 'r') as f:
+                        with open(file_path) as f:
                             result[key] = f.read().strip()
                     except Exception as e:
-                        print(f"⚠️  Failed to load {value}: {e}")
+                        logger.warning(f"Failed to load {value}: {e}")
                         result[key] = value  # Keep original path on error
                 else:
                     # File doesn't exist, keep the original value
@@ -45,14 +50,14 @@ def _load_markdown_references(config: Union[Dict, List, Any], base_path: Path) -
         return config
 
 
-def load_config_folder(folder_path: Path) -> Dict[str, Any]:
+def load_config_folder(folder_path: Path) -> dict[str, Any]:
     """Load a single config folder (YAML + prompt files) into a dict."""
     config = {}
 
     # Load main YAML config
     yaml_file = folder_path / "config.yaml"
     if yaml_file.exists():
-        with open(yaml_file, 'r') as f:
+        with open(yaml_file) as f:
             config = yaml.safe_load(f)
 
     # Recursively load any .md file references in the config
@@ -64,12 +69,14 @@ def load_config_folder(folder_path: Path) -> Dict[str, Any]:
 
     # JSON Schema is now used directly - no Pydantic model creation needed
     if "output_schema" in config:
-        print(f"✅ JSON Schema loaded for config")
+        logger.debug("JSON Schema loaded for config")
 
     return config
 
 
-def load_workflow_configs(base_dir: Path = Path("configs/multi_choice_classification")) -> Dict[str, Dict[str, Any]]:
+def load_workflow_configs(
+    base_dir: Path = Path("configs/multi_choice_classification"),
+) -> dict[str, dict[str, Any]]:
     """Load all workflow config folders into a single dict.
 
     Returns:
@@ -79,7 +86,7 @@ def load_workflow_configs(base_dir: Path = Path("configs/multi_choice_classifica
     configs = {}
 
     if not base_dir.exists():
-        print(f"⚠️  Config directory not found: {base_dir}")
+        logger.warning(f"Config directory not found: {base_dir}")
         return configs
 
     # Iterate through each subfolder
@@ -87,12 +94,12 @@ def load_workflow_configs(base_dir: Path = Path("configs/multi_choice_classifica
         if folder.is_dir() and (folder / "config.yaml").exists():
             folder_name = folder.name
             configs[folder_name] = load_config_folder(folder)
-            print(f"✅ Loaded config: {folder_name}")
+            logger.debug(f"Loaded config: {folder_name}")
 
     return configs
 
 
-def get_prompt(config: Dict[str, Any], prompt_type: str, **kwargs) -> str:
+def get_prompt(config: dict[str, Any], prompt_type: str, **kwargs) -> str:
     """Get a prompt from config and format it with kwargs.
 
     Args:
@@ -112,11 +119,11 @@ def get_prompt(config: Dict[str, Any], prompt_type: str, **kwargs) -> str:
     try:
         return prompt_template.format(**kwargs)
     except KeyError as e:
-        print(f"⚠️  Missing template variable: {e}")
+        logger.warning(f"Missing template variable: {e}")
         return prompt_template  # Return unformatted if variables missing
 
 
-def _parse_type_string(type_str: str, defined_models: Dict[str, Type[BaseModel]]) -> Any:
+def _parse_type_string(type_str: str, defined_models: dict[str, type[BaseModel]]) -> Any:
     """Parse a type string from YAML to actual Python type.
 
     Args:
@@ -131,16 +138,16 @@ def _parse_type_string(type_str: str, defined_models: Dict[str, Type[BaseModel]]
     # Handle Optional[...]
     if type_str.startswith("Optional[") and type_str.endswith("]"):
         inner_type = type_str[9:-1]
-        return Optional[_parse_type_string(inner_type, defined_models)]
+        return _parse_type_string(inner_type, defined_models) | None
 
     # Handle List[...]
     if type_str.startswith("List[") and type_str.endswith("]"):
         inner_type = type_str[5:-1]
-        return List[_parse_type_string(inner_type, defined_models)]
+        return list[_parse_type_string(inner_type, defined_models)]
 
     # Handle Dict[...]
     if type_str.startswith("Dict["):
-        return Dict[str, Any]
+        return dict[str, Any]
 
     # Check if it's a defined model
     if type_str in defined_models:
@@ -158,7 +165,7 @@ def _parse_type_string(type_str: str, defined_models: Dict[str, Type[BaseModel]]
     return type_mapping.get(type_str, str)
 
 
-def _extract_model_description(markdown: str, model_name: str) -> Optional[str]:
+def _extract_model_description(markdown: str, model_name: str) -> str | None:
     """Extract model-level description from output_schema.md file.
 
     Looks for the first paragraph after the model name header.
@@ -174,14 +181,14 @@ def _extract_model_description(markdown: str, model_name: str) -> Optional[str]:
         return None
 
     # Look for ## ModelName Schema pattern
-    pattern = rf'##\s+{model_name}\s+Schema\s*\n+(.*?)(?=\n##|\n###|$)'
+    pattern = rf"##\s+{model_name}\s+Schema\s*\n+(.*?)(?=\n##|\n###|$)"
     match = re.search(pattern, markdown, re.DOTALL)
 
     if match:
         desc_section = match.group(1).strip()
         # Extract first paragraph (before any ### headers or blank lines)
-        first_para = desc_section.split('\n\n')[0].strip()
-        first_para = first_para.split('\n###')[0].strip()
+        first_para = desc_section.split("\n\n")[0].strip()
+        first_para = first_para.split("\n###")[0].strip()
         if first_para:
             return first_para
 
@@ -189,9 +196,8 @@ def _extract_model_description(markdown: str, model_name: str) -> Optional[str]:
 
 
 def create_models_from_schema(
-    schema_dict: Dict[str, Dict[str, Dict[str, str]]],
-    schema_md_content: Optional[str] = None
-) -> Optional[Type[BaseModel]]:
+    schema_dict: dict[str, dict[str, dict[str, str]]], schema_md_content: str | None = None
+) -> type[BaseModel] | None:
     """Create Pydantic models from YAML schema definition.
 
     Args:
@@ -216,7 +222,7 @@ def create_models_from_schema(
         return None
 
     try:
-        defined_models: Dict[str, Type[BaseModel]] = {}
+        defined_models: dict[str, type[BaseModel]] = {}
 
         # Get all class names in order
         class_names = list(schema_dict.keys())
@@ -269,13 +275,12 @@ def create_models_from_schema(
         return None
 
     except Exception as e:
-        print(f"⚠️  Failed to create models from schema: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.warning(f"Failed to create models from schema: {e}")
+        logger.debug("Schema error traceback", exc_info=True)
         return None
 
 
-def get_model_params(config: Dict[str, Any]) -> Dict[str, Any]:
+def get_model_params(config: dict[str, Any]) -> dict[str, Any]:
     """Extract model parameters from config."""
     model_config = config.get("model", {})
     params = model_config.get("parameters", {})
@@ -289,7 +294,7 @@ def get_model_params(config: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def get_output_model(config: Dict[str, Any]) -> Optional[Type[BaseModel]]:
+def get_output_model(config: dict[str, Any]) -> type[BaseModel] | None:
     """Extract the dynamically created output model from config.
 
     Args:

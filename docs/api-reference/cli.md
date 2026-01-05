@@ -13,4 +13,3 @@ Command-line interface for HS Agent.
         - serve
         - health
         - config
-

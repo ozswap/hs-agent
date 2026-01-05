@@ -5,7 +5,7 @@ ChatVertexAI models with various settings and output schemas.
 """
 
 import copy
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_google_vertexai import ChatVertexAI
 
@@ -14,7 +14,7 @@ class ModelFactory:
     """Factory for creating and configuring LLM models."""
 
     @staticmethod
-    def create_base_model(model_name: str, model_params: Dict[str, Any]) -> ChatVertexAI:
+    def create_base_model(model_name: str, model_params: dict[str, Any]) -> ChatVertexAI:
         """Create a base ChatVertexAI model with standard configuration.
 
         Args:
@@ -47,9 +47,9 @@ class ModelFactory:
     @staticmethod
     def add_structured_output(
         model: ChatVertexAI,
-        schema: Dict[str, Any],
-        enum_codes: Optional[List[str]] = None,
-        enum_field_path: Optional[List[str]] = None
+        schema: dict[str, Any],
+        enum_codes: list[str] | None = None,
+        enum_field_path: list[str] | None = None,
     ) -> ChatVertexAI:
         """Add structured output schema to a model.
 
@@ -75,7 +75,9 @@ class ModelFactory:
                     if key == "properties":
                         current[key] = {}
                     else:
-                        current[key] = {} if isinstance(current.get(key), dict) else current.get(key)
+                        current[key] = (
+                            {} if isinstance(current.get(key), dict) else current.get(key)
+                        )
                 current = current[key]
 
             # Set the enum on the final field
@@ -89,9 +91,7 @@ class ModelFactory:
 
     @staticmethod
     def create_with_config(
-        model_name: str,
-        config: Dict[str, Any],
-        enum_codes: Optional[List[str]] = None
+        model_name: str, config: dict[str, Any], enum_codes: list[str] | None = None
     ) -> ChatVertexAI:
         """Create a model configured for a specific workflow step.
 
@@ -130,11 +130,15 @@ class ModelFactory:
                 if "selected_code" in schema_props:
                     # Single selection schema: properties.selected_code
                     enum_field_path = ["properties", "selected_code"]
-                    model = ModelFactory.add_structured_output(model, schema, enum_codes, enum_field_path)
+                    model = ModelFactory.add_structured_output(
+                        model, schema, enum_codes, enum_field_path
+                    )
                 elif "selections" in schema_props:
                     # Multi-selection schema: properties.selections.items.properties.code
                     enum_field_path = ["properties", "selections", "items", "properties", "code"]
-                    model = ModelFactory.add_structured_output(model, schema, enum_codes, enum_field_path)
+                    model = ModelFactory.add_structured_output(
+                        model, schema, enum_codes, enum_field_path
+                    )
                 else:
                     # No recognized selection field, add schema without enum
                     model = ModelFactory.add_structured_output(model, schema)
@@ -145,9 +149,7 @@ class ModelFactory:
 
     @staticmethod
     def create_for_multi_selection(
-        model_name: str,
-        config: Dict[str, Any],
-        candidate_codes: List[str]
+        model_name: str, config: dict[str, Any], candidate_codes: list[str]
     ) -> ChatVertexAI:
         """Create a model specifically for multi-selection with enum constraints.
 
@@ -176,19 +178,22 @@ class ModelFactory:
             schema = copy.deepcopy(schema)
 
             # Add enum constraint for selections.items.properties.code
-            if "properties" in schema and "selections" in schema["properties"]:
-                if "items" in schema["properties"]["selections"]:
-                    # Ensure properties exists
-                    if "properties" not in schema["properties"]["selections"]["items"]:
-                        schema["properties"]["selections"]["items"]["properties"] = {}
+            if (
+                "properties" in schema
+                and "selections" in schema["properties"]
+                and "items" in schema["properties"]["selections"]
+            ):
+                # Ensure properties exists
+                if "properties" not in schema["properties"]["selections"]["items"]:
+                    schema["properties"]["selections"]["items"]["properties"] = {}
 
-                    # Ensure code field exists
-                    code_props = schema["properties"]["selections"]["items"]["properties"]
-                    if "code" not in code_props:
-                        code_props["code"] = {"type": "string"}
+                # Ensure code field exists
+                code_props = schema["properties"]["selections"]["items"]["properties"]
+                if "code" not in code_props:
+                    code_props["code"] = {"type": "string"}
 
-                    # Add enum constraint
-                    code_props["code"]["enum"] = candidate_codes
+                # Add enum constraint
+                code_props["code"]["enum"] = candidate_codes
 
             return base_model.with_structured_output(schema)
 

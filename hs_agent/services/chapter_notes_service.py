@@ -8,7 +8,6 @@ Chapter notes contain important information about:
 """
 
 from pathlib import Path
-from typing import List
 
 from hs_agent.utils.logger import get_logger
 
@@ -26,7 +25,7 @@ class ChapterNotesService:
         """
         self.notes_dir = Path(notes_directory)
 
-    def load_chapter_notes(self, chapter_codes: List[str]) -> str:
+    def load_chapter_notes(self, chapter_codes: list[str]) -> str:
         """Load chapter notes for given chapter codes.
 
         Args:
@@ -58,7 +57,7 @@ class ChapterNotesService:
 
             if notes_file.exists():
                 try:
-                    with open(notes_file, 'r', encoding='utf-8') as f:
+                    with open(notes_file, encoding="utf-8") as f:
                         content = f.read().strip()
                         chapter_notes.append(f"═══ CHAPTER {chapter_code} NOTES ═══\n{content}")
                 except Exception as e:

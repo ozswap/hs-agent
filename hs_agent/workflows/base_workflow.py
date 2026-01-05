@@ -4,7 +4,6 @@ This module provides common functionality shared by both single-path and
 multi-path classification workflows to reduce code duplication.
 """
 
-from typing import Dict
 from hs_agent.models import ClassificationLevel
 
 
@@ -15,10 +14,41 @@ class BaseWorkflow:
     - Level name mapping and formatting
     - Candidates list formatting
     - Template variable building with parent context
+    - Confidence calculation with weighted averages
     """
 
     # Class-level constants
     LEVEL_NAMES = {"2": "CHAPTER", "4": "HEADING", "6": "SUBHEADING"}
+
+    # Confidence weights for overall score calculation
+    # Chapter decisions are foundational but less certain at high level
+    # Subheading is the final decision and carries most weight
+    CONFIDENCE_WEIGHTS = {
+        "chapter": 0.3,
+        "heading": 0.3,
+        "subheading": 0.4,
+    }
+
+    @classmethod
+    def calculate_overall_confidence(
+        cls, chapter_conf: float, heading_conf: float, subheading_conf: float
+    ) -> float:
+        """Calculate weighted overall confidence score.
+
+        Args:
+            chapter_conf: Chapter selection confidence (0.0-1.0)
+            heading_conf: Heading selection confidence (0.0-1.0)
+            subheading_conf: Subheading selection confidence (0.0-1.0)
+
+        Returns:
+            Weighted average confidence score
+        """
+        weights = cls.CONFIDENCE_WEIGHTS
+        return (
+            chapter_conf * weights["chapter"]
+            + heading_conf * weights["heading"]
+            + subheading_conf * weights["subheading"]
+        )
 
     def _get_level_name(self, level: ClassificationLevel) -> str:
         """Get human-readable level name.
@@ -31,7 +61,7 @@ class BaseWorkflow:
         """
         return self.LEVEL_NAMES[level.value]
 
-    def _format_candidates_list(self, codes_dict: Dict) -> str:
+    def _format_candidates_list(self, codes_dict: dict) -> str:
         """Format HS codes dictionary into a human-readable candidates list.
 
         Args:
@@ -40,16 +70,10 @@ class BaseWorkflow:
         Returns:
             Formatted string with one candidate per line: "code: description"
         """
-        return "\n".join([
-            f"{code}: {hs.description}"
-            for code, hs in codes_dict.items()
-        ])
+        return "\n".join([f"{code}: {hs.description}" for code, hs in codes_dict.items()])
 
     def _add_parent_context(
-        self,
-        template_vars: Dict,
-        level: ClassificationLevel,
-        parent_code: str = None
+        self, template_vars: dict, level: ClassificationLevel, parent_code: str = None
     ) -> None:
         """Add parent code context to template variables (mutates dict in place).
 

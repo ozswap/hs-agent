@@ -1,12 +1,13 @@
 """Centralized logging utility with consistent styling."""
 
 import logging
-from typing import Optional
-from rich.logging import RichHandler
+
 from rich.console import Console
+from rich.logging import RichHandler
 
 # Initialize rich console
 console = Console()
+
 
 # Color scheme - DRY principle
 class LogColors:
@@ -52,11 +53,7 @@ class HSLogger:
         if not self.logger.handlers:
             self.logger.setLevel(logging.INFO)
             handler = RichHandler(
-                console=console,
-                rich_tracebacks=True,
-                markup=True,
-                show_time=True,
-                show_path=False
+                console=console, rich_tracebacks=True, markup=True, show_time=True, show_path=False
             )
             handler.setFormatter(logging.Formatter("%(message)s"))
             self.logger.addHandler(handler)
@@ -84,21 +81,21 @@ class HSLogger:
         self.logger.debug(message)
 
     # Specialized logging methods for common patterns
-    def init_start(self, component: str, details: Optional[str] = None):
+    def init_start(self, component: str, details: str | None = None):
         """Log initialization start."""
         msg = f"{LogColors.ROCKET} {self._format_text('Initializing', LogColors.INFO)} {self._format_text(component, LogColors.HIGHLIGHT)}"
         if details:
             msg += f" {self._format_text(f'({details})', LogColors.DIM)}"
         self.logger.info(msg + "...")
 
-    def init_complete(self, component: str, details: Optional[str] = None):
+    def init_complete(self, component: str, details: str | None = None):
         """Log initialization complete."""
         msg = f"{LogColors.CHECK} {self._format_text(component, LogColors.SUCCESS)} ready!"
         if details:
             msg += f" {self._format_text(details, LogColors.DIM)}"
         self.logger.info(msg)
 
-    def classify_start(self, product: str, params: Optional[dict] = None):
+    def classify_start(self, product: str, params: dict | None = None):
         """Log classification start."""
         msg = f"{LogColors.PACKAGE} {self._format_text('Classifying:', 'bold')} {self._format_text(product, LogColors.PRODUCT)}"
         if params:
@@ -106,7 +103,7 @@ class HSLogger:
             msg += f" {self._format_text(f'({param_str})', LogColors.DIM)}"
         self.logger.info(msg)
 
-    def classify_result(self, code: str, confidence: float, extra: Optional[str] = None):
+    def classify_result(self, code: str, confidence: float, extra: str | None = None):
         """Log classification result."""
         msg = f"{LogColors.TARGET} {self._format_text('Result:', LogColors.SUCCESS)} {self._format_text(code, LogColors.CODE)}"
         msg += f" {self._format_text(f'(confidence: {confidence:.2%})', LogColors.DIM)}"
@@ -144,7 +141,7 @@ class HSLogger:
         msg = f"{LogColors.NOTES} Loaded chapter notes for: {self._format_text(chapters_str, LogColors.ACCENT)}"
         self.logger.info(msg)
 
-    def step_start(self, step_name: str, details: Optional[str] = None):
+    def step_start(self, step_name: str, details: str | None = None):
         """Log workflow step start."""
         msg = f"{LogColors.LIGHTNING} {self._format_text(step_name, 'bold')}"
         if details:

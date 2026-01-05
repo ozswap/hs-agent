@@ -8,7 +8,7 @@ This workflow explores multiple classification paths simultaneously:
 5. Compare paths using chapter notes and select the single best HS code
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
@@ -39,9 +39,9 @@ class MultiPathWorkflow(BaseWorkflow):
         self,
         data_loader: HSDataLoader,
         model_name: str,
-        configs: Dict,
+        configs: dict,
         retry_policy: RetryPolicy,
-        chapter_notes_service: ChapterNotesService
+        chapter_notes_service: ChapterNotesService,
     ):
         """Initialize the multi-path workflow.
 
@@ -88,13 +88,13 @@ class MultiPathWorkflow(BaseWorkflow):
             self.data_loader.codes_2digit,
             "select_chapter_candidates",
             ClassificationLevel.CHAPTER,
-            max_selections=state["max_selections"]
+            max_selections=state["max_selections"],
         )
         return {
             **state,
             "selected_chapters": result["codes"],
             "chapter_confidences": result["confidences"],
-            "chapter_reasonings": result["reasonings"]
+            "chapter_reasonings": result["reasonings"],
         }
 
     async def _multi_select_headings(self, state: MultiChoiceState) -> MultiChoiceState:
@@ -104,14 +104,16 @@ class MultiPathWorkflow(BaseWorkflow):
         reasonings = {}
 
         for chapter_code in state["selected_chapters"]:
-            codes = {c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)}
+            codes = {
+                c: h for c, h in self.data_loader.codes_4digit.items() if c.startswith(chapter_code)
+            }
             result = await self._multi_select_codes(
                 state["product_description"],
                 codes,
                 "select_heading_candidates",
                 ClassificationLevel.HEADING,
                 max_selections=state["max_selections"],
-                parent_code=chapter_code
+                parent_code=chapter_code,
             )
             selected_headings[chapter_code] = result["codes"]
             confidences[chapter_code] = result["confidences"]
@@ -121,7 +123,7 @@ class MultiPathWorkflow(BaseWorkflow):
             **state,
             "selected_headings_by_chapter": selected_headings,
             "heading_confidences_by_chapter": confidences,
-            "heading_reasonings_by_chapter": reasonings
+            "heading_reasonings_by_chapter": reasonings,
         }
 
     async def _multi_select_subheadings(self, state: MultiChoiceState) -> MultiChoiceState:
@@ -130,16 +132,20 @@ class MultiPathWorkflow(BaseWorkflow):
         confidences = {}
         reasonings = {}
 
-        for chapter_code, headings in state["selected_headings_by_chapter"].items():
+        for _chapter_code, headings in state["selected_headings_by_chapter"].items():
             for heading_code in headings:
-                codes = {c: h for c, h in self.data_loader.codes_6digit.items() if c.startswith(heading_code)}
+                codes = {
+                    c: h
+                    for c, h in self.data_loader.codes_6digit.items()
+                    if c.startswith(heading_code)
+                }
                 result = await self._multi_select_codes(
                     state["product_description"],
                     codes,
                     "select_subheading_candidates",
                     ClassificationLevel.SUBHEADING,
                     max_selections=state["max_selections"],
-                    parent_code=heading_code
+                    parent_code=heading_code,
                 )
                 selected_subheadings[heading_code] = result["codes"]
                 confidences[heading_code] = result["confidences"]
@@ -149,7 +155,7 @@ class MultiPathWorkflow(BaseWorkflow):
             **state,
             "selected_subheadings_by_heading": selected_subheadings,
             "subheading_confidences_by_heading": confidences,
-            "subheading_reasonings_by_heading": reasonings
+            "subheading_reasonings_by_heading": reasonings,
         }
 
     async def _multi_build_paths(self, state: MultiChoiceState) -> MultiChoiceState:
@@ -163,36 +169,50 @@ class MultiPathWorkflow(BaseWorkflow):
             for j, heading_code in enumerate(state["selected_headings_by_chapter"][chapter_code]):
                 heading_reasoning = state["heading_reasonings_by_chapter"][chapter_code][j]
 
-                for k, subheading_code in enumerate(state["selected_subheadings_by_heading"][heading_code]):
-                    subheading_reasoning = state["subheading_reasonings_by_heading"][heading_code][k]
+                for k, subheading_code in enumerate(
+                    state["selected_subheadings_by_heading"][heading_code]
+                ):
+                    subheading_reasoning = state["subheading_reasonings_by_heading"][heading_code][
+                        k
+                    ]
 
-                    # Calculate path confidence
+                    # Calculate path confidence using shared weights
                     chapter_conf = state["chapter_confidences"][i]
                     heading_conf = state["heading_confidences_by_chapter"][chapter_code][j]
                     subheading_conf = state["subheading_confidences_by_heading"][heading_code][k]
-                    path_confidence = (chapter_conf * 0.3 + heading_conf * 0.3 + subheading_conf * 0.4)
+                    path_confidence = self.calculate_overall_confidence(
+                        chapter_conf, heading_conf, subheading_conf
+                    )
 
                     # Get descriptions from data loader
                     chapter_desc = self.data_loader.codes_2digit.get(chapter_code, None)
                     heading_desc = self.data_loader.codes_4digit.get(heading_code, None)
                     subheading_desc = self.data_loader.codes_6digit.get(subheading_code, None)
 
-                    paths.append(ClassificationPath(
-                        chapter_code=chapter_code,
-                        chapter_description=chapter_desc.description if chapter_desc else "Description not found",
-                        heading_code=heading_code,
-                        heading_description=heading_desc.description if heading_desc else "Description not found",
-                        subheading_code=subheading_code,
-                        subheading_description=subheading_desc.description if subheading_desc else "Description not found",
-                        path_confidence=path_confidence,
-                        chapter_reasoning=chapter_reasoning,
-                        heading_reasoning=heading_reasoning,
-                        subheading_reasoning=subheading_reasoning
-                    ))
+                    paths.append(
+                        ClassificationPath(
+                            chapter_code=chapter_code,
+                            chapter_description=chapter_desc.description
+                            if chapter_desc
+                            else "Description not found",
+                            heading_code=heading_code,
+                            heading_description=heading_desc.description
+                            if heading_desc
+                            else "Description not found",
+                            subheading_code=subheading_code,
+                            subheading_description=subheading_desc.description
+                            if subheading_desc
+                            else "Description not found",
+                            path_confidence=path_confidence,
+                            chapter_reasoning=chapter_reasoning,
+                            heading_reasoning=heading_reasoning,
+                            subheading_reasoning=subheading_reasoning,
+                        )
+                    )
 
         # Sort by confidence and limit to configured max to avoid overwhelming output
         paths.sort(key=lambda p: p.path_confidence, reverse=True)
-        top_paths = paths[:settings.max_output_paths]
+        top_paths = paths[: settings.max_output_paths]
 
         overall_strategy = f"Selected {len(top_paths)} classification path(s) from {len(paths)} possible combinations"
 
@@ -204,40 +224,47 @@ class MultiPathWorkflow(BaseWorkflow):
         product_description = state["product_description"]
 
         # Extract unique chapter codes from all paths
-        chapter_codes = list(set(path.chapter_code for path in paths))
+        chapter_codes = list({path.chapter_code for path in paths})
 
         # Load chapter notes for all chapters present in paths
         chapter_notes = self.chapter_notes_service.load_chapter_notes(chapter_codes)
 
         # Format paths for comparison
-        classification_paths = "\n\n".join([
-            f"PATH {i+1} (Confidence: {path.path_confidence:.2f}):\n"
-            f"  Final HS Code: {path.subheading_code}\n"
-            f"  Complete Path: {path.chapter_code} -> {path.heading_code} -> {path.subheading_code}\n"
-            f"  Chapter: {path.chapter_code} - {path.chapter_description}\n"
-            f"    Reasoning: {path.chapter_reasoning}\n"
-            f"  Heading: {path.heading_code} - {path.heading_description}\n"
-            f"    Reasoning: {path.heading_reasoning}\n"
-            f"  Subheading: {path.subheading_code} - {path.subheading_description}\n"
-            f"    Reasoning: {path.subheading_reasoning}\n"
-            for i, path in enumerate(paths)
-        ])
+        classification_paths = "\n\n".join(
+            [
+                f"PATH {i + 1} (Confidence: {path.path_confidence:.2f}):\n"
+                f"  Final HS Code: {path.subheading_code}\n"
+                f"  Complete Path: {path.chapter_code} -> {path.heading_code} -> {path.subheading_code}\n"
+                f"  Chapter: {path.chapter_code} - {path.chapter_description}\n"
+                f"    Reasoning: {path.chapter_reasoning}\n"
+                f"  Heading: {path.heading_code} - {path.heading_description}\n"
+                f"    Reasoning: {path.heading_reasoning}\n"
+                f"  Subheading: {path.subheading_code} - {path.subheading_description}\n"
+                f"    Reasoning: {path.subheading_reasoning}\n"
+                for i, path in enumerate(paths)
+            ]
+        )
 
         # Use prompts from config
         config = self.configs.get("compare_final_codes", {})
 
-        system_prompt = get_prompt(config, "system") or """You are an HS code classification expert.
+        system_prompt = (
+            get_prompt(config, "system")
+            or """You are an HS code classification expert.
 Compare all classification paths and select THE SINGLE BEST HS code."""
+        )
 
         # Build template variables
         template_vars = {
             "product_description": product_description,
             "classification_paths": classification_paths,
             "path_count": len(paths),
-            "chapter_notes": chapter_notes
+            "chapter_notes": chapter_notes,
         }
 
-        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
+        user_prompt = (
+            get_prompt(config, "user", **template_vars)
+            or f"""Product: "{product_description}"
 
 Paths to compare:
 {classification_paths}
@@ -246,6 +273,7 @@ Chapter Notes (IMPORTANT - these contain precedence rules and exclusions):
 {chapter_notes}
 
 Select the SINGLE BEST HS code from these {len(paths)} paths."""
+        )
 
         try:
             # Get config-specific model for comparison
@@ -254,7 +282,7 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
             # Invoke with retry logic
             result = await self.retry_policy.invoke_with_retry(
                 comparison_model,
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
             )
 
             # Handle exhausted retries - return "000000" (insufficient information)
@@ -264,7 +292,7 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
                     "final_selected_code": NO_HS_CODE,
                     "final_confidence": 0.0,
                     "final_reasoning": "Unable to classify - LLM failed to return valid response after retries",
-                    "comparison_summary": "Classification failed due to LLM errors"
+                    "comparison_summary": "Classification failed due to LLM errors",
                 }
 
             # Handle special "000000" code for invalid descriptions
@@ -274,20 +302,22 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
                     "final_selected_code": NO_HS_CODE,
                     "final_confidence": result["confidence"],
                     "final_reasoning": result["reasoning"],
-                    "comparison_summary": result["comparison_summary"]
+                    "comparison_summary": result["comparison_summary"],
                 }
 
             # Validate that selected code is in one of the paths
             path_codes = {path.subheading_code for path in paths}
             if result["selected_code"] not in path_codes:
-                raise ValueError(f"LLM selected invalid code '{result['selected_code']}' not in available paths: {list(path_codes)}")
+                raise ValueError(
+                    f"LLM selected invalid code '{result['selected_code']}' not in available paths: {list(path_codes)}"
+                )
 
             return {
                 **state,
                 "final_selected_code": result["selected_code"],
                 "final_confidence": result["confidence"],
                 "final_reasoning": result["reasoning"],
-                "comparison_summary": result["comparison_summary"]
+                "comparison_summary": result["comparison_summary"],
             }
 
         except Exception as e:
@@ -297,12 +327,12 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
     async def _multi_select_codes(
         self,
         product_description: str,
-        codes_dict: Dict,
+        codes_dict: dict,
         config_name: str,
         level: ClassificationLevel,
         max_selections: int = 3,
-        parent_code: Optional[str] = None
-    ) -> Dict[str, Any]:
+        parent_code: str | None = None,
+    ) -> dict[str, Any]:
         """Evaluate all codes and select 1-N best using multi-selection."""
 
         # Use base class helper to format candidates
@@ -311,41 +341,45 @@ Select the SINGLE BEST HS code from these {len(paths)} paths."""
         # Get config
         config = self.configs.get(config_name, {})
 
-        system_prompt = get_prompt(config, "system") or f"""You are an HS code classification expert.
+        system_prompt = (
+            get_prompt(config, "system")
+            or f"""You are an HS code classification expert.
 Evaluate all codes and select 1-{max_selections} BEST codes. Provide confidence (0.0-1.0) for each and overall reasoning."""
+        )
 
         # Build template variables
         template_vars = {
             "product_description": product_description,
             "candidates_list": candidates_list,
             "level": self._get_level_name(level),
-            "max_selections": max_selections
+            "max_selections": max_selections,
         }
 
         # Use base class helper to add parent context
         self._add_parent_context(template_vars, level, parent_code)
 
-        user_prompt = get_prompt(config, "user", **template_vars) or f"""Product: "{product_description}"
+        user_prompt = (
+            get_prompt(config, "user", **template_vars)
+            or f"""Product: "{product_description}"
 Level: {self._get_level_name(level)}
-Parent: {parent_code if parent_code else 'None'}
+Parent: {parent_code if parent_code else "None"}
 
 Candidates:
 {candidates_list}
 
 Evaluate all codes and select 1-{max_selections} most accurate codes."""
+        )
 
         try:
             # Use ModelFactory for multi-selection with enum constraints
             multi_selection_model = ModelFactory.create_for_multi_selection(
-                self.model_name,
-                config,
-                list(codes_dict.keys())
+                self.model_name, config, list(codes_dict.keys())
             )
 
             # Invoke with retry logic
             result = await self.retry_policy.invoke_with_retry(
                 multi_selection_model,
-                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)],
             )
 
             # Handle exhausted retries - return "000000" (insufficient information)
@@ -353,7 +387,9 @@ Evaluate all codes and select 1-{max_selections} most accurate codes."""
                 return {
                     "codes": [NO_HS_CODE],
                     "confidences": [0.0],
-                    "reasonings": ["Unable to classify - LLM failed to return valid response after retries"]
+                    "reasonings": [
+                        "Unable to classify - LLM failed to return valid response after retries"
+                    ],
                 }
 
             # Validate that all selected codes are in codes_dict
@@ -370,7 +406,7 @@ Evaluate all codes and select 1-{max_selections} most accurate codes."""
                 return {
                     "codes": [NO_HS_CODE],
                     "confidences": [0.0],
-                    "reasonings": ["Unable to classify - LLM returned empty selections"]
+                    "reasonings": ["Unable to classify - LLM returned empty selections"],
                 }
 
             for selection in selections:
@@ -399,13 +435,15 @@ Evaluate all codes and select 1-{max_selections} most accurate codes."""
                 return {
                     "codes": [NO_HS_CODE],
                     "confidences": [0.0],
-                    "reasonings": [f"Unable to classify - LLM selected invalid codes: {selected_codes}"]
+                    "reasonings": [
+                        f"Unable to classify - LLM selected invalid codes: {selected_codes}"
+                    ],
                 }
 
             return {
                 "codes": valid_codes,
                 "confidences": valid_confidences,
-                "reasonings": valid_reasonings
+                "reasonings": valid_reasonings,
             }
 
         except Exception as e:

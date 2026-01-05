@@ -470,7 +470,7 @@
         function buildTreeData(data) {
             // Build hierarchical tree structure from paths_explored
             const finalCode = data.final_code;
-            
+
             // Root node - product description
             const root = {
                 name: 'Description',
@@ -495,9 +495,9 @@
                         children: []
                     });
                 }
-                
+
                 const chapter = chapterMap.get(path.chapter_code);
-                
+
                 // Group by heading within chapter
                 let heading = chapter.children.find(h => h.code === path.heading_code);
                 if (!heading) {
@@ -512,7 +512,7 @@
                     };
                     chapter.children.push(heading);
                 }
-                
+
                 // Add subheading
                 heading.children.push({
                     name: path.subheading_code,
@@ -522,7 +522,7 @@
                     isSelected: path.subheading_code === finalCode,
                     confidence: path.path_confidence
                 });
-                
+
                 // Update parent selection status
                 if (path.subheading_code === finalCode) {
                     chapter.isSelected = true;
@@ -542,7 +542,7 @@
             container.innerHTML = '';
 
             const treeData = buildTreeData(data);
-            
+
             // Set dimensions
             const width = container.offsetWidth || 800;
             const height = 600;
@@ -573,7 +573,7 @@
             ];
             const layerWidth = (width - margin.left - margin.right) / 3;
             const layerPositions = [0, 1, 2, 3].map(i => i * layerWidth);
-            
+
             // Add background rectangles for each layer zone
             layers.forEach((layer, i) => {
                 if (i > 0) { // Skip description layer for cleaner look
@@ -589,11 +589,11 @@
                         .attr('stroke-dasharray', '4,4');
                 }
             });
-            
+
             // Add layer labels with better spacing and styling
             layers.forEach((layer, i) => {
                 const x = layerPositions[i];
-                
+
                 // Add layer number badge
                 svg.append('rect')
                     .attr('x', x - 35)
@@ -603,7 +603,7 @@
                     .attr('rx', 4)
                     .attr('fill', '#8b5cf6')
                     .attr('opacity', 0.1);
-                
+
                 // Add "Layer N" text
                 svg.append('text')
                     .attr('x', x)
@@ -613,7 +613,7 @@
                     .attr('font-size', '9px')
                     .attr('font-weight', 'bold')
                     .text(`Layer ${layer.layer}`);
-                
+
                 // Add layer name
                 svg.append('text')
                     .attr('x', x)
@@ -650,7 +650,7 @@
                     tooltip.transition()
                         .duration(200)
                         .style('opacity', 1);
-                    
+
                     let tooltipContent = `<div class="tooltip-title">${d.data.name}</div>`;
                     tooltipContent += `<div style="font-size: 10px; margin-bottom: 4px;">${d.data.layer}</div>`;
                     if (d.data.description) {
@@ -659,7 +659,7 @@
                     if (d.data.confidence !== undefined) {
                         tooltipContent += `<div class="tooltip-confidence">Confidence: ${(d.data.confidence * 100).toFixed(1)}%</div>`;
                     }
-                    
+
                     tooltip.html(tooltipContent)
                         .style('left', (event.pageX + 10) + 'px')
                         .style('top', (event.pageY - 10) + 'px');

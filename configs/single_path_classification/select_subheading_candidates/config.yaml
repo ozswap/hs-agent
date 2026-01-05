@@ -2,8 +2,8 @@ model:
   name: gemini-2.5-flash
   parameters:
     temperature: 0.1
-    
-    
+
+
     thinking_budget: 0
 prompts:
   system: prompts/system.md
@@ -12,7 +12,7 @@ prompts:
 output_schema:
   title: "SelectionOutput"
   description: "prompts/output_schema.md"
-  type: "object" 
+  type: "object"
   properties:
     selected_code:
       type: "string"

@@ -71,13 +71,13 @@ async def classify_product():
     # Initialize data loader
     loader = HSDataLoader()
     loader.load_all_data()
-    
+
     # Create agent
     agent = HSAgent(loader)
-    
+
     # Classify product
     result = await agent.classify("laptop computer")
-    
+
     print(f"HS Code: {result.final_code}")
     print(f"Confidence: {result.overall_confidence:.2%}")
 

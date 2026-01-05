@@ -47,4 +47,3 @@ Pydantic models for classification requests and responses.
     options:
       show_root_heading: true
       heading_level: 3
-

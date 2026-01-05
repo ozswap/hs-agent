@@ -1,7 +1,5 @@
 """HS classification agent with LangGraph."""
 
-from typing import Optional
-
 from hs_agent.config.settings import settings
 from hs_agent.config_loader import load_workflow_configs
 from hs_agent.data_loader import HSDataLoader
@@ -12,11 +10,12 @@ from hs_agent.models import (
 )
 from hs_agent.policies import RetryPolicy
 from hs_agent.services import ChapterNotesService
-from hs_agent.workflows import SinglePathWorkflow, MultiPathWorkflow
 from hs_agent.utils.logger import get_logger
+from hs_agent.workflows import MultiPathWorkflow, SinglePathWorkflow
 
 # Get centralized logger
 logger = get_logger("hs_agent.agent")
+
 
 class HSAgent:
     """HS classification agent using LangGraph with Logfire tracing.
@@ -32,8 +31,8 @@ class HSAgent:
     def __init__(
         self,
         data_loader: HSDataLoader,
-        model_name: Optional[str] = None,
-        workflow_name: str = "wide_net_classification"
+        model_name: str | None = None,
+        workflow_name: str = "wide_net_classification",
     ):
         """Initialize the HS classification agent.
 
@@ -49,6 +48,7 @@ class HSAgent:
         # Load workflow configs from files
         logger.step_start("Loading workflow configs", f"'{workflow_name}'")
         from pathlib import Path
+
         workflow_path = Path(f"configs/{workflow_name}")
         self.configs = load_workflow_configs(workflow_path)
 
@@ -63,7 +63,7 @@ class HSAgent:
             data_loader=self.data_loader,
             model_name=self.model_name,
             configs=self.configs,
-            retry_policy=self.retry_policy
+            retry_policy=self.retry_policy,
         )
 
         self.multi_path_workflow = MultiPathWorkflow(
@@ -71,7 +71,7 @@ class HSAgent:
             model_name=self.model_name,
             configs=self.configs,
             retry_policy=self.retry_policy,
-            chapter_notes_service=self.chapter_notes_service
+            chapter_notes_service=self.chapter_notes_service,
         )
 
         # Build LangGraphs using workflows
@@ -94,6 +94,7 @@ class HSAgent:
             ClassificationResponse with final code and confidence scores
         """
         import time
+
         start = time.time()
 
         # Initial state
@@ -103,7 +104,7 @@ class HSAgent:
             "heading_result": None,
             "subheading_result": None,
             "final_code": None,
-            "overall_confidence": None
+            "overall_confidence": None,
         }
 
         # Run graph (LangSmith OTEL auto-instruments via Logfire)
@@ -118,10 +119,12 @@ class HSAgent:
             chapter=final_state["chapter_result"],
             heading=final_state["heading_result"],
             subheading=final_state["subheading_result"],
-            processing_time_ms=processing_time
+            processing_time_ms=processing_time,
         )
 
-    async def classify_multi(self, product_description: str, max_selections: int = 3) -> MultiChoiceClassificationResponse:
+    async def classify_multi(
+        self, product_description: str, max_selections: int = 3
+    ) -> MultiChoiceClassificationResponse:
         """Classify a product using multi-path classification with comparison.
 
         This method explores multiple classification paths simultaneously:
@@ -139,6 +142,7 @@ class HSAgent:
             MultiChoiceClassificationResponse with all paths and final selected code
         """
         import time
+
         start = time.time()
 
         # Initial state
@@ -159,7 +163,7 @@ class HSAgent:
             "final_selected_code": None,
             "final_confidence": None,
             "final_reasoning": None,
-            "comparison_summary": None
+            "comparison_summary": None,
         }
 
         # Run multi-choice graph (LangSmith OTEL auto-instruments via Logfire)
@@ -175,5 +179,5 @@ class HSAgent:
             final_selected_code=final_state["final_selected_code"],
             final_confidence=final_state["final_confidence"],
             final_reasoning=final_state["final_reasoning"],
-            comparison_summary=final_state["comparison_summary"]
+            comparison_summary=final_state["comparison_summary"],
         )
