@@ -65,7 +65,7 @@ Open your browser to:
 ```python
 import asyncio
 from hs_agent.agent import HSAgent
-from hs_agent.data_loader import HSDataLoader
+from hs_agent.data import HSDataLoader
 
 async def classify_product():
     # Initialize data loader

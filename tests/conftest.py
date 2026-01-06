@@ -137,18 +137,12 @@ def mock_data_loader():
     }
 
     mock_loader.codes_4digit = {
-        "8471": HSCode(
-            code="8471", description="Data processing machines", level=4, parent="84"
-        ),
-        "6203": HSCode(
-            code="6203", description="Men's suits, ensembles", level=4, parent="62"
-        ),
+        "8471": HSCode(code="8471", description="Data processing machines", level=4, parent="84"),
+        "6203": HSCode(code="6203", description="Men's suits, ensembles", level=4, parent="62"),
     }
 
     mock_loader.codes_6digit = {
-        "847130": HSCode(
-            code="847130", description="Portable computers", level=6, parent="8471"
-        ),
+        "847130": HSCode(code="847130", description="Portable computers", level=6, parent="8471"),
         "620342": HSCode(
             code="620342", description="Men's cotton trousers", level=6, parent="6203"
         ),
@@ -247,7 +241,7 @@ def reset_environment():
 @pytest.fixture
 def mock_retry_policy():
     """Provide a mock RetryPolicy with AsyncMock for invoke_with_retry."""
-    from hs_agent.policies.retry_policy import RetryPolicy
+    from hs_agent.utils.retry import RetryPolicy
 
     mock_policy = Mock(spec=RetryPolicy)
     mock_policy.invoke_with_retry = AsyncMock(
@@ -263,7 +257,7 @@ def mock_retry_policy():
 @pytest.fixture
 def mock_retry_policy_multi_selection():
     """Provide a mock RetryPolicy for multi-selection workflows."""
-    from hs_agent.policies.retry_policy import RetryPolicy
+    from hs_agent.utils.retry import RetryPolicy
 
     mock_policy = Mock(spec=RetryPolicy)
     mock_policy.invoke_with_retry = AsyncMock(
@@ -280,7 +274,7 @@ def mock_retry_policy_multi_selection():
 @pytest.fixture
 def mock_chapter_notes_service():
     """Provide a mock ChapterNotesService."""
-    from hs_agent.services.chapter_notes_service import ChapterNotesService
+    from hs_agent.data.chapter_notes import ChapterNotesService
 
     mock_service = Mock(spec=ChapterNotesService)
     mock_service.load_chapter_notes.return_value = (
@@ -340,12 +334,10 @@ def temp_config_dir():
 
         # Create prompt files
         (prompts_folder / "system.md").write_text(
-            "You are an HS code classification expert.\n"
-            "Select the best chapter for the product."
+            "You are an HS code classification expert.\n" "Select the best chapter for the product."
         )
         (prompts_folder / "user.md").write_text(
-            "Product: {product_description}\n\n"
-            "Available chapters:\n{candidates_list}"
+            "Product: {product_description}\n\n" "Available chapters:\n{candidates_list}"
         )
 
         yield temp_path
@@ -369,8 +361,7 @@ def temp_chapter_notes_dir():
             "- Electrical machinery (Chapter 85)\n"
         )
         (notes_dir / "chapter_85_notes.md").write_text(
-            "# Chapter 85 Notes\n\n"
-            "This chapter covers electrical machinery and equipment.\n"
+            "# Chapter 85 Notes\n\n" "This chapter covers electrical machinery and equipment.\n"
         )
 
         yield temp_path

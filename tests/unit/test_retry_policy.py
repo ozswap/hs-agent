@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hs_agent.policies.retry_policy import RetryPolicy
+from hs_agent.utils.retry import RetryPolicy
 
 
 class TestRetryPolicyInit:

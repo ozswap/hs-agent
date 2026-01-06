@@ -9,8 +9,7 @@ Tests cover:
 
 from pathlib import Path
 
-
-from hs_agent.services.chapter_notes_service import ChapterNotesService
+from hs_agent.data.chapter_notes import ChapterNotesService
 
 
 class TestChapterNotesServiceInit:
@@ -179,9 +178,7 @@ class TestChapterNotesServiceEdgeCases:
 
     def test_handles_unicode_content(self, tmp_path):
         """Test handling of unicode characters in notes."""
-        (tmp_path / "chapter_84_notes.md").write_text(
-            "Máquinas y aparatos mecánicos\n日本語テスト"
-        )
+        (tmp_path / "chapter_84_notes.md").write_text("Máquinas y aparatos mecánicos\n日本語テスト")
 
         service = ChapterNotesService(notes_directory=str(tmp_path))
 

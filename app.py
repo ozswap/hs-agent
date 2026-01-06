@@ -26,7 +26,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 from hs_agent.agent import HSAgent  # noqa: E402
 from hs_agent.config.settings import settings  # noqa: E402
-from hs_agent.data_loader import HSDataLoader  # noqa: E402
+from hs_agent.data import HSDataLoader  # noqa: E402
 from hs_agent.models import (  # noqa: E402
     ClassificationLevel,
     ClassificationRequest,

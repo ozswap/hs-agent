@@ -2,15 +2,14 @@
 
 from hs_agent.config.settings import settings
 from hs_agent.config_loader import load_workflow_configs
-from hs_agent.data_loader import HSDataLoader
+from hs_agent.data import ChapterNotesService, HSDataLoader
 from hs_agent.graph_models import ClassificationState, MultiChoiceState
 from hs_agent.models import (
     ClassificationResponse,
     MultiChoiceClassificationResponse,
 )
-from hs_agent.policies import RetryPolicy
-from hs_agent.services import ChapterNotesService
 from hs_agent.utils.logger import get_logger
+from hs_agent.utils.retry import RetryPolicy
 from hs_agent.workflows import MultiPathWorkflow, SinglePathWorkflow
 
 # Get centralized logger

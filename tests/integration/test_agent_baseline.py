@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from hs_agent.agent import HSAgent
-from hs_agent.data_loader import HSDataLoader
+from hs_agent.data import HSDataLoader
 from hs_agent.models import (
     ClassificationLevel,
     ClassificationPath,
@@ -244,7 +244,7 @@ class TestBackwardCompatibility:
         """Test that import paths remain the same."""
         # These imports should work after refactoring
         from hs_agent.agent import HSAgent
-        from hs_agent.data_loader import HSDataLoader
+        from hs_agent.data import HSDataLoader
         from hs_agent.models import ClassificationResponse, MultiChoiceClassificationResponse
 
         assert HSAgent is not None

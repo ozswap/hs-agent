@@ -94,7 +94,7 @@ Interactive interface at http://localhost:8000/classify with:
 
 ```python
 from hs_agent.agent import HSAgent
-from hs_agent.data_loader import HSDataLoader
+from hs_agent.data import HSDataLoader
 
 loader = HSDataLoader()
 loader.load_all_data()

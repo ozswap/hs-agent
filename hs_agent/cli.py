@@ -25,7 +25,7 @@ warnings.filterwarnings("ignore", message=".*Failed to multipart ingest runs.*")
 # Imports must come after env var setup for LangSmith OTEL tracing
 from hs_agent.agent import HSAgent  # noqa: E402
 from hs_agent.config.settings import settings  # noqa: E402
-from hs_agent.data_loader import HSDataLoader  # noqa: E402
+from hs_agent.data import HSDataLoader  # noqa: E402
 
 app = typer.Typer(
     name="hs-agent", help="AI-powered HS code classification service", add_completion=False

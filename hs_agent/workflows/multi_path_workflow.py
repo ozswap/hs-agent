@@ -15,7 +15,7 @@ from langgraph.graph import END, START, StateGraph
 
 from hs_agent.config.settings import settings
 from hs_agent.config_loader import get_prompt
-from hs_agent.data_loader import HSDataLoader
+from hs_agent.data import ChapterNotesService, HSDataLoader
 from hs_agent.factories import ModelFactory
 from hs_agent.graph_models import MultiChoiceState
 from hs_agent.models import (
@@ -24,9 +24,8 @@ from hs_agent.models import (
     ClassificationPath,
     is_no_hs_code,
 )
-from hs_agent.policies import RetryPolicy
-from hs_agent.services import ChapterNotesService
 from hs_agent.utils.logger import get_logger
+from hs_agent.utils.retry import RetryPolicy
 from hs_agent.workflows.base_workflow import BaseWorkflow
 
 logger = get_logger("hs_agent.workflows.multi_path")
