@@ -7,9 +7,8 @@ Tests verify:
 """
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app import app
+from fastapi.testclient import TestClient
 
 # Test client for API calls
 client = TestClient(app)
@@ -33,7 +32,7 @@ def test_products():
             "description": "laptop computer with 15 inch screen",
             "expected_chapter": "84",
             "expected_code_prefix": "8471",  # Automatic data processing machines
-            "weirationale": "Laptops are classified under machinery (84), specifically data processing machines (8471)",
+            "rationale": "Laptops are classified under HS 8471 (automatic data processing machines) in chapter 84",
         },
         {
             "description": "cotton t-shirt for men",
@@ -73,7 +72,12 @@ class TestClassifyEndpoint:
         product = test_products[0]  # laptop computer
 
         response = client.post(
-            "/api/classify", json={"product_description": product["description"]}
+            "/api/classify",
+            json={
+                "product_description": product["description"],
+                "high_performance": True,
+                "max_selections": 3,
+            },
         )
 
         # Check response status
@@ -102,7 +106,12 @@ class TestClassifyEndpoint:
         product = test_products[0]
 
         response = client.post(
-            "/api/classify", json={"product_description": product["description"]}
+            "/api/classify",
+            json={
+                "product_description": product["description"],
+                "high_performance": True,
+                "max_selections": 3,
+            },
         )
 
         data = response.json()
@@ -122,7 +131,12 @@ class TestClassifyEndpoint:
         product = test_products[0]
 
         response = client.post(
-            "/api/classify", json={"product_description": product["description"]}
+            "/api/classify",
+            json={
+                "product_description": product["description"],
+                "high_performance": True,
+                "max_selections": 3,
+            },
         )
 
         data = response.json()
@@ -157,7 +171,12 @@ class TestClassifyEndpoint:
         product = test_products[product_idx]
 
         response = client.post(
-            "/api/classify", json={"product_description": product["description"]}
+            "/api/classify",
+            json={
+                "product_description": product["description"],
+                "high_performance": True,
+                "max_selections": 3,
+            },
         )
 
         data = response.json()
@@ -175,7 +194,12 @@ class TestClassifyEndpoint:
         product = test_products[product_idx]
 
         response = client.post(
-            "/api/classify", json={"product_description": product["description"]}
+            "/api/classify",
+            json={
+                "product_description": product["description"],
+                "high_performance": True,
+                "max_selections": 3,
+            },
         )
 
         data = response.json()
