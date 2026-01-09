@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HS Code Benchmark Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <!-- Pyodide for Parquet support (Python in WebAssembly) -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .loader { border-top-color: #3b82f6; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen" x-data="benchmarkApp()" x-cloak>
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <h1 class="text-2xl font-bold text-gray-800">HS Code Benchmark Creator</h1>
+            <p class="text-gray-600 text-sm mt-1">Upload, verify, and create benchmark datasets</p>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6">
+        <!-- Upload Section -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">1. Upload Data File</h2>
+
+            <div class="flex gap-4 items-start">
+                <div class="flex-1">
+                    <label class="block">
+                        <span class="sr-only">Choose file</span>
+                        <input type="file"
+                               accept=".csv,.parquet"
+                               @change="handleFileUpload($event)"
+                               class="block w-full text-sm text-gray-500
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-lg file:border-0
+                                      file:text-sm file:font-semibold
+                                      file:bg-blue-50 file:text-blue-700
+                                      hover:file:bg-blue-100 cursor-pointer">
+                    </label>
+                    <p class="text-xs text-gray-500 mt-2">Supports CSV and Parquet files</p>
+                </div>
+
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">API URL</label>
+                    <input type="text" x-model="apiUrl"
+                           class="w-full px-3 py-2 border rounded-lg text-sm"
+                           placeholder="http://localhost:8000">
+                </div>
+            </div>
+
+            <!-- Loading indicator -->
+            <div x-show="loading" class="mt-4 flex items-center gap-2 text-blue-600">
+                <div class="loader w-5 h-5 border-2 border-blue-200 rounded-full"></div>
+                <span x-text="loadingMessage"></span>
+            </div>
+
+            <!-- File info -->
+            <div x-show="rows.length > 0" class="mt-4 p-3 bg-gray-50 rounded-lg">
+                <p class="text-sm"><strong>Loaded:</strong> <span x-text="fileName"></span></p>
+                <p class="text-sm"><strong>Rows:</strong> <span x-text="rows.length"></span></p>
+                <p class="text-sm"><strong>Detected columns:</strong> <span x-text="detectedColumns.join(', ')"></span></p>
+            </div>
+        </div>
+
+        <!-- Column Mapping Section -->
+        <div x-show="rows.length > 0" class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">2. Map Columns</h2>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Product Description Column</label>
+                    <select x-model="columnMapping.description" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <option value="">-- Select --</option>
+                        <template x-for="col in detectedColumns" :key="col">
+                            <option :value="col" x-text="col"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Existing HS Code Column (optional)</label>
+                    <select x-model="columnMapping.hsCode" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <option value="">-- None --</option>
+                        <template x-for="col in detectedColumns" :key="col">
+                            <option :value="col" x-text="col"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Secondary HS Code Column (optional)</label>
+                    <select x-model="columnMapping.hsCode2" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <option value="">-- None --</option>
+                        <template x-for="col in detectedColumns" :key="col">
+                            <option :value="col" x-text="col"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Category/Source Column (optional)</label>
+                    <select x-model="columnMapping.category" class="w-full px-3 py-2 border rounded-lg text-sm">
+                        <option value="">-- None --</option>
+                        <template x-for="col in detectedColumns" :key="col">
+                            <option :value="col" x-text="col"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+
+            <button @click="applyMapping()"
+                    :disabled="!columnMapping.description"
+                    class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                Apply Mapping
+            </button>
+        </div>
+
+        <!-- Actions Section -->
+        <div x-show="mappedRows.length > 0" class="bg-white rounded-lg shadow p-6 mb-6">
+            <h2 class="text-lg font-semibold mb-4">3. Actions</h2>
+
+            <div class="flex gap-4 flex-wrap">
+                <button @click="runClassifications()"
+                        :disabled="classifying"
+                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 flex items-center gap-2">
+                    <template x-if="classifying">
+                        <div class="loader w-4 h-4 border-2 border-white rounded-full"></div>
+                    </template>
+                    <span x-text="classifying ? `Classifying ${classifyProgress}/${mappedRows.length}...` : 'Run HS Agent Classifications'"></span>
+                </button>
+
+                <button @click="downloadBenchmark()"
+                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                    Download Benchmark CSV
+                </button>
+
+                <div class="flex items-center gap-2 ml-auto">
+                    <span class="text-sm text-gray-600">Filter:</span>
+                    <select x-model="filter" class="px-3 py-2 border rounded-lg text-sm">
+                        <option value="all">All</option>
+                        <option value="unverified">Unverified</option>
+                        <option value="verified">Verified</option>
+                        <option value="mismatch">Mismatches</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Progress stats -->
+            <div class="mt-4 flex gap-6 text-sm">
+                <span class="text-gray-600">Total: <strong x-text="mappedRows.length"></strong></span>
+                <span class="text-green-600">Verified: <strong x-text="verifiedCount"></strong></span>
+                <span class="text-yellow-600">Unverified: <strong x-text="mappedRows.length - verifiedCount"></strong></span>
+                <span class="text-red-600">Mismatches: <strong x-text="mismatchCount"></strong></span>
+            </div>
+        </div>
+
+        <!-- Data Table -->
+        <div x-show="mappedRows.length > 0" class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-12">#</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700">Product Description</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-32">Source 1</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-32">Source 2</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-32">Agent</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-40">Ground Truth</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-24">Status</th>
+                            <th class="px-4 py-3 text-left font-medium text-gray-700 w-20">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                        <template x-for="(row, idx) in filteredRows" :key="idx">
+                            <tr class="hover:bg-gray-50" :class="{'bg-green-50': row.verified, 'bg-red-50': row.mismatch && !row.verified}">
+                                <td class="px-4 py-3 text-gray-500" x-text="row.originalIndex + 1"></td>
+                                <td class="px-4 py-3">
+                                    <div class="max-w-md truncate" x-text="row.description" :title="row.description"></div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <template x-if="row.hsCode1">
+                                        <a :href="'https://www.tariffnumber.com/2026/' + row.hsCode1"
+                                           target="_blank"
+                                           class="text-blue-600 hover:underline font-mono"
+                                           x-text="row.hsCode1"></a>
+                                    </template>
+                                    <span x-show="!row.hsCode1" class="text-gray-400">-</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <template x-if="row.hsCode2">
+                                        <a :href="'https://www.tariffnumber.com/2026/' + row.hsCode2"
+                                           target="_blank"
+                                           class="text-blue-600 hover:underline font-mono"
+                                           x-text="row.hsCode2"></a>
+                                    </template>
+                                    <span x-show="!row.hsCode2" class="text-gray-400">-</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <template x-if="row.agentHsCode">
+                                        <div>
+                                            <a :href="'https://www.tariffnumber.com/2026/' + row.agentHsCode"
+                                               target="_blank"
+                                               class="text-blue-600 hover:underline font-mono"
+                                               x-text="row.agentHsCode"></a>
+                                            <span class="text-xs text-gray-500 block" x-text="row.agentConfidence"></span>
+                                        </div>
+                                    </template>
+                                    <span x-show="!row.agentHsCode" class="text-gray-400">-</span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <input type="text"
+                                           x-model="row.groundTruth"
+                                           @input="row.verified = false"
+                                           class="w-full px-2 py-1 border rounded font-mono text-sm"
+                                           placeholder="Enter HS code">
+                                </td>
+                                <td class="px-4 py-3">
+                                    <span x-show="row.verified" class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                                        Verified
+                                    </span>
+                                    <span x-show="!row.verified && row.mismatch" class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-red-100 text-red-800">
+                                        Mismatch
+                                    </span>
+                                    <span x-show="!row.verified && !row.mismatch" class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800">
+                                        Pending
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex gap-1">
+                                        <button @click="verifyRow(row)"
+                                                class="p-1 text-green-600 hover:bg-green-100 rounded"
+                                                title="Mark as verified">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                            </svg>
+                                        </button>
+                                        <button @click="openDetails(row)"
+                                                class="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                                                title="View details">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Details Modal -->
+        <div x-show="detailsRow"
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+             @click.self="detailsRow = null">
+            <div class="bg-white rounded-lg shadow-xl max-w-3xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-lg font-semibold">Product Details</h3>
+                        <button @click="detailsRow = null" class="text-gray-400 hover:text-gray-600">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <template x-if="detailsRow">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Product Description</label>
+                                <p class="p-3 bg-gray-50 rounded-lg text-sm" x-text="detailsRow.description"></p>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Source 1 HS Code</label>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-mono" x-text="detailsRow.hsCode1 || '-'"></span>
+                                        <a x-show="detailsRow.hsCode1"
+                                           :href="'https://www.tariffnumber.com/2026/' + detailsRow.hsCode1"
+                                           target="_blank"
+                                           class="text-blue-600 text-xs hover:underline">USITC</a>
+                                        <button x-show="detailsRow.hsCode1"
+                                                @click="detailsRow.groundTruth = detailsRow.hsCode1"
+                                                class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                            Use this
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Source 2 HS Code</label>
+                                    <div class="flex items-center gap-2">
+                                        <span class="font-mono" x-text="detailsRow.hsCode2 || '-'"></span>
+                                        <a x-show="detailsRow.hsCode2"
+                                           :href="'https://www.tariffnumber.com/2026/' + detailsRow.hsCode2"
+                                           target="_blank"
+                                           class="text-blue-600 text-xs hover:underline">USITC</a>
+                                        <button x-show="detailsRow.hsCode2"
+                                                @click="detailsRow.groundTruth = detailsRow.hsCode2"
+                                                class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                            Use this
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div x-show="detailsRow.agentHsCode">
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Agent Classification</label>
+                                <div class="p-3 bg-blue-50 rounded-lg">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="font-mono font-bold" x-text="detailsRow.agentHsCode"></span>
+                                        <span class="text-sm text-gray-600" x-text="'(' + detailsRow.agentConfidence + ')'"></span>
+                                        <a :href="'https://www.tariffnumber.com/2026/' + detailsRow.agentHsCode"
+                                           target="_blank"
+                                           class="text-blue-600 text-xs hover:underline">USITC</a>
+                                        <button @click="detailsRow.groundTruth = detailsRow.agentHsCode"
+                                                class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">
+                                            Use this
+                                        </button>
+                                    </div>
+                                    <p x-show="detailsRow.agentReasoning" class="text-sm text-gray-700" x-text="detailsRow.agentReasoning"></p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Ground Truth (Verified HS Code)</label>
+                                <input type="text"
+                                       x-model="detailsRow.groundTruth"
+                                       class="w-full px-3 py-2 border rounded-lg font-mono"
+                                       placeholder="Enter the correct HS code">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                                <textarea x-model="detailsRow.notes"
+                                          rows="2"
+                                          class="w-full px-3 py-2 border rounded-lg text-sm"
+                                          placeholder="Add notes about this classification..."></textarea>
+                            </div>
+
+                            <div class="flex justify-end gap-3 pt-4 border-t">
+                                <button @click="detailsRow = null"
+                                        class="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+                                    Cancel
+                                </button>
+                                <button @click="verifyRow(detailsRow); detailsRow = null"
+                                        class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                                    Verify & Save
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        function benchmarkApp() {
+            return {
+                // State
+                loading: false,
+                loadingMessage: '',
+                fileName: '',
+                rows: [],
+                detectedColumns: [],
+                columnMapping: {
+                    description: '',
+                    hsCode: '',
+                    hsCode2: '',
+                    category: ''
+                },
+                mappedRows: [],
+                filter: 'all',
+                apiUrl: 'http://localhost:8000',
+                classifying: false,
+                classifyProgress: 0,
+                detailsRow: null,
+
+                // Computed
+                get filteredRows() {
+                    return this.mappedRows.filter(row => {
+                        if (this.filter === 'all') return true;
+                        if (this.filter === 'verified') return row.verified;
+                        if (this.filter === 'unverified') return !row.verified;
+                        if (this.filter === 'mismatch') return row.mismatch;
+                        return true;
+                    });
+                },
+
+                get verifiedCount() {
+                    return this.mappedRows.filter(r => r.verified).length;
+                },
+
+                get mismatchCount() {
+                    return this.mappedRows.filter(r => r.mismatch && !r.verified).length;
+                },
+
+                // Methods
+                pyodide: null,
+
+                async handleFileUpload(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    this.loading = true;
+                    this.fileName = file.name;
+                    this.rows = [];
+                    this.mappedRows = [];
+                    this.detectedColumns = [];
+
+                    try {
+                        if (file.name.endsWith('.parquet')) {
+                            await this.parseParquet(file);
+                        } else {
+                            await this.parseCSV(file);
+                        }
+                        this.autoDetectColumns();
+                    } catch (error) {
+                        console.error('Error parsing file:', error);
+                        alert('Error parsing file: ' + error.message);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async ensurePyodide() {
+                    if (this.pyodide) return this.pyodide;
+
+                    this.loadingMessage = 'Loading Python runtime (first time only)...';
+                    this.pyodide = await loadPyodide();
+
+                    this.loadingMessage = 'Loading micropip...';
+                    await this.pyodide.loadPackage('micropip');
+
+                    this.loadingMessage = 'Installing parquet packages (this may take a minute)...';
+                    await this.pyodide.runPythonAsync(`
+import micropip
+await micropip.install(['pandas', 'fastparquet', 'cramjam'])
+                    `);
+
+                    return this.pyodide;
+                },
+
+                async parseParquet(file) {
+                    this.loadingMessage = 'Initializing Pyodide...';
+                    const pyodide = await this.ensurePyodide();
+
+                    this.loadingMessage = 'Reading Parquet file...';
+                    const arrayBuffer = await file.arrayBuffer();
+                    const uint8Array = new Uint8Array(arrayBuffer);
+
+                    // Pass the file to Python
+                    pyodide.globals.set('parquet_bytes', uint8Array);
+
+                    // Use fastparquet to read and convert to JSON
+                    const jsonStr = await pyodide.runPythonAsync(`
+import pandas as pd
+from fastparquet import ParquetFile
+import io
+import json
+import math
+
+# Read parquet from bytes
+buffer = io.BytesIO(bytes(parquet_bytes.to_py()))
+pf = ParquetFile(buffer)
+df = pf.to_pandas()
+
+# Replace NaN/NaT with None for JSON compatibility
+df = df.fillna('')  # Replace NaN with empty string
+
+# Convert to records
+records = df.to_dict('records')
+
+# Clean up any remaining NaN/inf values
+def clean_value(v):
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    return v
+
+records = [{k: clean_value(v) for k, v in r.items()} for r in records]
+
+# Get column names
+columns = df.columns.tolist()
+
+# Return as JSON
+json.dumps({'columns': columns, 'records': records}, default=str)
+                    `);
+
+                    const data = JSON.parse(jsonStr);
+                    this.rows = data.records;
+                    this.detectedColumns = data.columns;
+
+                    this.loadingMessage = '';
+                },
+
+                async parseCSV(file) {
+                    this.loadingMessage = 'Parsing CSV...';
+                    return new Promise((resolve, reject) => {
+                        Papa.parse(file, {
+                            header: true,
+                            skipEmptyLines: true,
+                            complete: (results) => {
+                                this.rows = results.data;
+                                this.detectedColumns = results.meta.fields || [];
+                                resolve();
+                            },
+                            error: (error) => reject(error)
+                        });
+                    });
+                },
+
+                autoDetectColumns() {
+                    // Auto-detect common column names
+                    const cols = this.detectedColumns.map(c => c.toLowerCase());
+
+                    // Description
+                    const descCandidates = ['product_description', 'description', 'product', 'name', 'item'];
+                    for (const candidate of descCandidates) {
+                        const idx = cols.findIndex(c => c.includes(candidate));
+                        if (idx >= 0) {
+                            this.columnMapping.description = this.detectedColumns[idx];
+                            break;
+                        }
+                    }
+
+                    // HS Code 1 (prefer subheading_code for parquet files)
+                    const hs1Candidates = ['subheading_code', 'hs_code', 'hscode', 'hs6', 'final_code', 'ground_truth_hs6'];
+                    for (const candidate of hs1Candidates) {
+                        const idx = cols.findIndex(c => c.includes(candidate));
+                        if (idx >= 0) {
+                            this.columnMapping.hsCode = this.detectedColumns[idx];
+                            break;
+                        }
+                    }
+
+                    // HS Code 2 (secondary source like avalara)
+                    const hs2Candidates = ['avalara_classification_result__hs_code', 'avalara', 'external_code'];
+                    for (const candidate of hs2Candidates) {
+                        const idx = cols.findIndex(c => c.includes(candidate));
+                        if (idx >= 0) {
+                            this.columnMapping.hsCode2 = this.detectedColumns[idx];
+                            break;
+                        }
+                    }
+
+                    // Category
+                    const catCandidates = ['category', 'label_source', 'source', 'chapter'];
+                    for (const candidate of catCandidates) {
+                        const idx = cols.findIndex(c => c.includes(candidate));
+                        if (idx >= 0) {
+                            this.columnMapping.category = this.detectedColumns[idx];
+                            break;
+                        }
+                    }
+                },
+
+                applyMapping() {
+                    this.mappedRows = this.rows.map((row, idx) => {
+                        const hsCode1 = this.columnMapping.hsCode ? String(row[this.columnMapping.hsCode] || '').replace(/\.0$/, '') : null;
+                        const hsCode2 = this.columnMapping.hsCode2 ? String(row[this.columnMapping.hsCode2] || '').replace(/\.0$/, '') : null;
+
+                        // Determine if there's a mismatch between sources
+                        const mismatch = hsCode1 && hsCode2 && hsCode1 !== hsCode2;
+
+                        // Default ground truth to hsCode1 (subheading_code) if available
+                        const groundTruth = hsCode1 || hsCode2 || '';
+
+                        return {
+                            originalIndex: idx,
+                            description: row[this.columnMapping.description] || '',
+                            hsCode1: hsCode1,
+                            hsCode2: hsCode2,
+                            category: this.columnMapping.category ? row[this.columnMapping.category] : '',
+                            groundTruth: groundTruth,
+                            verified: false,
+                            mismatch: mismatch,
+                            agentHsCode: null,
+                            agentConfidence: null,
+                            agentReasoning: null,
+                            notes: '',
+                            rawData: row
+                        };
+                    });
+                },
+
+                async runClassifications() {
+                    if (!this.apiUrl) {
+                        alert('Please set the API URL');
+                        return;
+                    }
+
+                    this.classifying = true;
+                    this.classifyProgress = 0;
+
+                    const concurrency = 5;
+                    const queue = [...this.mappedRows.entries()];
+
+                    const classifyOne = async (idx, row) => {
+                        try {
+                            const response = await fetch(`${this.apiUrl}/api/classify`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    product_description: row.description,
+                                    high_performance: true,
+                                    max_selections: 3
+                                })
+                            });
+
+                            if (response.ok) {
+                                const result = await response.json();
+                                row.agentHsCode = result.hs_code;
+                                row.agentConfidence = result.confidence;
+                                row.agentReasoning = result.reasoning;
+                            } else {
+                                row.agentHsCode = 'ERROR';
+                                row.agentConfidence = 'API Error';
+                            }
+                        } catch (error) {
+                            row.agentHsCode = 'ERROR';
+                            row.agentConfidence = error.message;
+                        }
+                        this.classifyProgress++;
+                    };
+
+                    // Process with concurrency limit
+                    const workers = [];
+                    for (let i = 0; i < concurrency; i++) {
+                        workers.push((async () => {
+                            while (queue.length > 0) {
+                                const [idx, row] = queue.shift();
+                                await classifyOne(idx, row);
+                            }
+                        })());
+                    }
+
+                    await Promise.all(workers);
+                    this.classifying = false;
+                },
+
+                verifyRow(row) {
+                    if (!row.groundTruth) {
+                        alert('Please enter a ground truth HS code');
+                        return;
+                    }
+                    // Normalize to 6 digits
+                    row.groundTruth = String(row.groundTruth).replace(/\D/g, '').padStart(6, '0').slice(0, 6);
+                    row.verified = true;
+                    row.mismatch = false;
+                },
+
+                openDetails(row) {
+                    this.detailsRow = row;
+                },
+
+                downloadBenchmark() {
+                    const verifiedRows = this.mappedRows.filter(r => r.verified);
+
+                    if (verifiedRows.length === 0) {
+                        alert('No verified rows to download. Please verify at least one row.');
+                        return;
+                    }
+
+                    const today = new Date().toISOString().split('T')[0];
+
+                    const csvData = verifiedRows.map(row => ({
+                        product_description: row.description,
+                        ground_truth_hs6: row.groundTruth,
+                        ground_truth_hs4: row.groundTruth.slice(0, 4),
+                        ground_truth_hs2: row.groundTruth.slice(0, 2),
+                        category: row.category || 'Unknown',
+                        confidence: 'high',
+                        source: 'manual_verification',
+                        added_date: today,
+                        validated_by: 'user',
+                        notes: row.notes || ''
+                    }));
+
+                    const csv = Papa.unparse(csvData);
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `benchmark_${today}.csv`;
+                    a.click();
+
+                    URL.revokeObjectURL(url);
+                }
+            };
+        }
+    </script>
+</body>
+</html>
