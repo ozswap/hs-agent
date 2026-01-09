@@ -37,6 +37,8 @@ dependencies = [
     "logfire>=4.16.0",
     "opentelemetry-instrumentation-fastapi>=0.60b1",
     "opentelemetry-instrumentation-asgi>=0.60b1",
+    "dvc>=3.66.1",
+    "dvc-gs>=3.0.2",
 ]
 
 [project.scripts]
